@@ -1,0 +1,37 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
+
+body {
+  font-family: "Inter", sans-serif !important;
+  margin: 0;
+  background: #f4f4f2;
+  overflow-x: hidden;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+#root {
+  background: #f4f4f2;
+}
+
+#web-app-frame {
+  box-sizing: border-box;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+}
+
+#web-app-frame * {
+  box-sizing: border-box;
+}
+
+#web-app-frame [style*="position: fixed"] {
+  left: 50% !important;
+  right: auto !important;
+  max-width: 430px !important;
+  width: min(100vw, 430px) !important;
+  transform: translateX(-50%) !important;
+}
