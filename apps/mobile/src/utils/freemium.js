@@ -1,3 +1,5 @@
+import { isActiveReminderSchedule } from "./resurfacing";
+
 export const PLAN_TIERS = {
   FREE: "free",
   PRO: "pro",
@@ -22,7 +24,9 @@ function isProTier(tier) {
 
 export function getFreemiumUsage({ videos = [], collections = [] } = {}) {
   const activeVideos = videos.filter((video) => !video.archived);
-  const activeReminders = activeVideos.filter((video) => video.reminderEnabled);
+  const activeReminders = activeVideos.filter(
+    (video) => video.reminderEnabled && isActiveReminderSchedule(video),
+  );
 
   return {
     savedVideosCount: activeVideos.length,

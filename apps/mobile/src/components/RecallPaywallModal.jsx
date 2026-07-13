@@ -6,15 +6,19 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/dev";
-import { Sparkles } from "lucide-react-native";
+import { Check } from "lucide-react-native";
+import { RecallReminderIcon } from "./RecallReminderIcon";
 import { usePaywallStore } from "../store/usePaywallStore";
 import { PAYWALL_TRIGGERS } from "../utils/freemium";
+import { RECALL_COLORS } from "../constants/recallTheme";
 
-const BG = "#F7F7F5";
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F0";
+const BG = RECALL_COLORS.subtle;
+const WHITE = RECALL_COLORS.surface;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.secondaryText;
+const GREY_LIGHT = RECALL_COLORS.subtle;
+const BORDER = RECALL_COLORS.border;
+const ACCENT = RECALL_COLORS.accent;
 
 function getTriggerSubtitle(trigger) {
   if (trigger === PAYWALL_TRIGGERS.SAVE_VIDEO) {
@@ -59,49 +63,52 @@ export function RecallPaywallModal() {
       <View
         style={{
           flex: 1,
-          backgroundColor: "rgba(17,17,17,0.34)",
+          backgroundColor: "rgba(28,24,20,0.3)",
           justifyContent: "center",
-          paddingHorizontal: 24,
+          paddingHorizontal: 22,
         }}
       >
         <View
           style={{
             backgroundColor: WHITE,
-            borderRadius: 30,
-            paddingHorizontal: 24,
-            paddingTop: 26,
-            paddingBottom: 22,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 12 },
-            shadowOpacity: 0.1,
-            shadowRadius: 28,
+            borderRadius: 32,
+            borderWidth: 1,
+            borderColor: BORDER,
+            paddingHorizontal: 26,
+            paddingTop: 30,
+            paddingBottom: 24,
+            shadowColor: "#6F5C4C",
+            shadowOffset: { width: 0, height: 14 },
+            shadowOpacity: 0.12,
+            shadowRadius: 32,
             elevation: 4,
           }}
         >
           <View
             style={{
-              width: 60,
-              height: 60,
-              borderRadius: 22,
+              width: 56,
+              height: 56,
+              borderRadius: 20,
               backgroundColor: BG,
               justifyContent: "center",
               alignItems: "center",
-              marginBottom: 20,
+              marginBottom: 24,
             }}
           >
-            <Sparkles size={28} color={BLACK} />
+            <RecallReminderIcon name="sparkles" size={25} />
           </View>
 
           <Text
             style={{
-              fontSize: 28,
-              fontFamily: "Inter_700Bold",
+              fontSize: 30,
+              lineHeight: 36,
+              fontFamily: "Georgia",
               color: BLACK,
-              letterSpacing: -0.8,
-              marginBottom: 10,
+              letterSpacing: -0.5,
+              marginBottom: 12,
             }}
           >
-            Save more of what matters.
+            Rediscover what matters.
           </Text>
 
           <Text
@@ -109,34 +116,67 @@ export function RecallPaywallModal() {
               fontSize: 15,
               fontFamily: "Inter_400Regular",
               color: GREY_TEXT,
-              lineHeight: 22,
-              marginBottom: 12,
-            }}
-          >
-            Upgrade to keep unlimited videos, reminders, and collections in
-            Recall.
-          </Text>
-
-          <Text
-            style={{
-              fontSize: 13,
-              fontFamily: "Inter_500Medium",
-              color: GREY_TEXT,
-              lineHeight: 19,
+              lineHeight: 23,
               marginBottom: 24,
             }}
           >
-            {getTriggerSubtitle(trigger)}
+            Recall Pro helps saved moments return at the right time.
           </Text>
+
+          <View
+            style={{
+              gap: 14,
+              marginBottom: 26,
+            }}
+          >
+            {[
+              "Smart resurfacing",
+              "Unlimited reminders & collections",
+              "Advanced rediscovery controls",
+            ].map((feature) => (
+              <View
+                key={feature}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: GREY_LIGHT,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Check size={15} color={ACCENT} strokeWidth={2} />
+                </View>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 14,
+                    lineHeight: 20,
+                    fontFamily: "Inter_500Medium",
+                    color: BLACK,
+                  }}
+                >
+                  {feature}
+                </Text>
+              </View>
+            ))}
+          </View>
 
           <Pressable
             onPress={hidePaywall}
             style={({ pressed }) => ({
-              borderRadius: 18,
+              borderRadius: 20,
               backgroundColor: pressed ? "#1F1F1F" : BLACK,
-              paddingVertical: 15,
+              paddingVertical: 16,
               alignItems: "center",
-              marginBottom: 10,
+              marginBottom: 13,
             })}
           >
             <Text
@@ -146,29 +186,41 @@ export function RecallPaywallModal() {
                 color: WHITE,
               }}
             >
-              Upgrade to Pro
+              Upgrade to Recall Pro
             </Text>
           </Pressable>
 
           <Pressable
             onPress={hidePaywall}
             style={({ pressed }) => ({
-              borderRadius: 18,
-              backgroundColor: pressed ? "#ECECE8" : GREY_LIGHT,
-              paddingVertical: 15,
+              paddingVertical: 8,
               alignItems: "center",
+              opacity: pressed ? 0.55 : 1,
             })}
           >
             <Text
               style={{
                 fontSize: 15,
-                fontFamily: "Inter_600SemiBold",
-                color: BLACK,
+                fontFamily: "Inter_500Medium",
+                color: GREY_TEXT,
               }}
             >
               Maybe later
             </Text>
           </Pressable>
+
+          <Text
+            style={{
+              marginTop: 14,
+              fontSize: 12,
+              lineHeight: 17,
+              fontFamily: "Inter_400Regular",
+              color: "#9A938C",
+              textAlign: "center",
+            }}
+          >
+            Users revisit more saved videos with Pro.
+          </Text>
         </View>
       </View>
     </Modal>

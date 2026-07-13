@@ -1,7 +1,9 @@
 import { View, Text, Pressable, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { CheckCircle2, Play, Library, ChevronRight } from "lucide-react-native";
+import { CheckCircle2, ChevronRight } from "lucide-react-native";
+import { RecallActionIcon } from "../components/RecallActionIcon";
+import { RecallSavedContentIcon } from "../components/RecallSavedContentIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -11,6 +13,7 @@ import {
 } from "@expo-google-fonts/dev";
 import { useRef, useEffect } from "react";
 import { useRouter } from "expo-router";
+import { getDisplayTitle } from "../utils/titleHelpers";
 
 const WHITE = "#FFFFFF";
 const BLACK = "#000000";
@@ -380,9 +383,8 @@ export default function VideoWatchedScreen() {
               color: BLACK,
               letterSpacing: -0.2,
             }}
-            numberOfLines={1}
           >
-            {v.title}
+            {getDisplayTitle(v.title)}
           </Text>
           <Text
             style={{
@@ -506,7 +508,7 @@ export default function VideoWatchedScreen() {
               gap: 9,
             })}
           >
-            <Play size={14} color={BLACK} fill={BLACK} />
+            <RecallActionIcon name="play" size={14} />
             <Text
               style={{
                 fontSize: 16,
@@ -530,7 +532,7 @@ export default function VideoWatchedScreen() {
           }}
           onPress={() => router.push("/(tabs)/saved")}
         >
-          <Library size={14} color={GREY_TEXT} />
+          <RecallSavedContentIcon name="collections" size={14} />
           <Text
             style={{
               fontSize: 14,

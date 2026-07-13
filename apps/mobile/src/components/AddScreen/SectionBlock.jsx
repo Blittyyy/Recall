@@ -3,20 +3,20 @@ import { BLACK, GREY_LIGHT } from "../../constants/addScreen";
 
 export function SectionBlock({ icon, label, children }) {
   return (
-    <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+    <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 8,
-          marginBottom: 12,
+          gap: 10,
+          marginBottom: 14,
         }}
       >
         <View
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
+            width: 38,
+            height: 38,
+            borderRadius: 13,
             backgroundColor: GREY_LIGHT,
             justifyContent: "center",
             alignItems: "center",
@@ -26,7 +26,7 @@ export function SectionBlock({ icon, label, children }) {
         </View>
         <Text
           style={{
-            fontSize: 15,
+            fontSize: 18,
             fontFamily: "Inter_600SemiBold",
             color: BLACK,
           }}

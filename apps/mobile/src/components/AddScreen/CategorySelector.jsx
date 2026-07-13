@@ -19,7 +19,7 @@ export function CategorySelector({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8 }}
+        contentContainerStyle={{ gap: 10 }}
         style={{ flexGrow: 0 }}
       >
         {CATEGORIES.map((c) => {
@@ -32,10 +32,12 @@ export function CategorySelector({
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 6,
-                paddingHorizontal: 16,
-                paddingVertical: 11,
+                paddingHorizontal: 17,
+                paddingVertical: 12,
                 borderRadius: 32,
-                backgroundColor: active ? BLACK : GREY_LIGHT,
+                backgroundColor: active ? BLACK : WHITE,
+                borderWidth: active ? 0 : 1,
+                borderColor: "#E7DED3",
               }}
             >
               <Text style={{ fontSize: 14 }}>{c.emoji}</Text>
@@ -43,7 +45,7 @@ export function CategorySelector({
                 style={{
                   fontSize: 14,
                   fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
-                  color: active ? WHITE : "#3C3C43",
+                  color: active ? WHITE : BLACK,
                 }}
               >
                 {c.label}

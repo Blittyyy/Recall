@@ -9,20 +9,15 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  Archive,
-  Bell,
   BellOff,
-  CalendarDays,
   ChevronLeft,
-  Clock,
   ChevronRight,
-  FolderOpen,
-  Pencil,
-  Play,
-  RotateCcw,
   Trash2,
-  UserRound,
 } from "lucide-react-native";
+import { RecallActionIcon } from "../components/RecallActionIcon";
+import { RecallSavedContentIcon } from "../components/RecallSavedContentIcon";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
+import { RecallProfileIcon } from "../components/RecallProfileIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -31,16 +26,24 @@ import {
   Inter_700Bold,
 } from "@expo-google-fonts/dev";
 import { useEffect, useState } from "react";
+import Animated from "react-native-reanimated";
 import { useRecallStore } from "../store/useRecallStore";
+import { useAppearanceStore } from "../store/useAppearanceStore";
+import { useLibraryVideoDetailEnterAnimation } from "../components/LibraryVideoDetailTransition";
 import {
   GREY_LIGHT,
   WHITE,
 } from "../constants/addScreen";
 import {
-  daysAgoFromISO,
   getCategoryMeta,
   getSavedWeeksLabel,
+  isActiveReminderSchedule,
+  isOnceReminderCompleted,
+  isWorthRevisitingEligible,
+  formatReminderScheduleLabel,
 } from "../utils/resurfacing";
+import { getDisplayTitle } from "../utils/titleHelpers";
+import { isVideoUnavailable } from "../utils/videoAvailability";
 import { PlatformIcon } from "../components/AddScreen/PlatformIcon";
 import { VideoThumbnail } from "../components/VideoThumbnail";
 import { ReminderSetupModal } from "../components/ReminderSetupModal";
@@ -48,18 +51,31 @@ import { RecallSyncState } from "../components/RecallSyncState";
 import { CollectionSelectionModal } from "../components/CollectionSelectionModal";
 import { EditVideoDetailsModal } from "../components/EditVideoDetailsModal";
 import { cancelFollowUpReminderNotificationsForVideo } from "../services/recallNotifications";
+import { RECALL_COLORS } from "../constants/recallTheme";
 
-const BG = "#F7F7F5";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_MID = "#C7C7CC";
+const BG = RECALL_COLORS.background;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.secondaryText;
+const GREY_MID = RECALL_COLORS.mid;
 const RED = "#FF3B30";
+const SERIF = "Georgia";
 
 export default function VideoDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, fromLibrary } = useLocalSearchParams();
   const videoId = Array.isArray(id) ? id[0] : id;
+  const openedFromLibrary = Array.isArray(fromLibrary)
+    ? fromLibrary[0] === "1"
+    : fromLibrary === "1";
+  const reduceMotion = useAppearanceStore((state) => state.reduceMotion);
+  const shouldRunLibraryEnter =
+    openedFromLibrary && !reduceMotion;
+  const { heroStyle, titleStyle, belowTitleStyle } =
+    useLibraryVideoDetailEnterAnimation({
+      enabled: shouldRunLibraryEnter,
+      reduceMotion,
+    });
 
   const video = useRecallStore((s) => s.videos.find((v) => v.id === videoId));
   const collections = useRecallStore((s) => s.collections);
@@ -75,6 +91,9 @@ export default function VideoDetailScreen() {
   const addCollection = useRecallStore((s) => s.addCollection);
   const archiveVideo = useRecallStore((s) => s.archiveVideo);
   const removeVideo = useRecallStore((s) => s.removeVideo);
+  const setDevWorthRevisitingForTesting = useRecallStore(
+    (s) => s.setDevWorthRevisitingForTesting,
+  );
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -87,6 +106,10 @@ export default function VideoDetailScreen() {
   const [showEditVideo, setShowEditVideo] = useState(false);
   const [showSavedNotice, setShowSavedNotice] = useState(false);
 
+  const markOnceReminderDelivered = useRecallStore(
+    (s) => s.markOnceReminderDelivered,
+  );
+
   useEffect(() => {
     if (!videoId) {
       return;
@@ -94,6 +117,18 @@ export default function VideoDetailScreen() {
 
     cancelFollowUpReminderNotificationsForVideo(videoId).catch(() => null);
   }, [videoId]);
+
+  useEffect(() => {
+    if (!video || video.reminderFrequency !== "Once") {
+      return;
+    }
+
+    if (video.onceReminderCompletedAt || !isOnceReminderCompleted(video)) {
+      return;
+    }
+
+    markOnceReminderDelivered(video.id).catch(() => null);
+  }, [video, markOnceReminderDelivered]);
 
   useEffect(() => {
     if (!showSavedNotice) {
@@ -153,6 +188,8 @@ export default function VideoDetailScreen() {
     video.revisitCount === 1
       ? "Opened 1 time"
       : `Opened ${video.revisitCount} times`;
+  const showActiveReminderSchedule = isActiveReminderSchedule(video);
+  const onceReminderCompleted = isOnceReminderCompleted(video);
 
   const openVideo = async () => {
     markOpened(video.id);
@@ -208,183 +245,199 @@ export default function VideoDetailScreen() {
   };
 
   const makeWorthRevisitingForDebug = async () => {
-    const fifteenDaysAgoIso = new Date(
-      Date.now() - 15 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-
-    const result = await updateVideo(video.id, {
-      savedAt: fifteenDaysAgoIso,
-      lastOpenedAt: null,
-      archived: false,
-      dismissedFromResurfacingUntil: null,
-    });
-
-    if (result === null) {
+    const enabled = await setDevWorthRevisitingForTesting(video.id);
+    if (!enabled) {
       return;
     }
 
     Alert.alert(
-      "Ready for Worth Revisiting",
-      "This save should now be eligible for Worth Revisiting.",
+      "Dev: Worth Revisiting enabled",
+      "This save will appear in Worth Revisiting for testing. The saved date shown on cards stays accurate.",
     );
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}
-        showsVerticalScrollIndicator={false}
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 20,
+          paddingBottom: 8,
+        }}
       >
-        <View
-          style={{
-            paddingTop: insets.top + 12,
-            paddingHorizontal: 20,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
+        <View style={styles.navRow}>
           <BackButton onPress={() => router.back()} />
           <ActionIconButton
             onPress={() => setShowEditVideo(true)}
-            icon={<Pencil size={18} color={BLACK} />}
+            icon={<RecallActionIcon name="edit" size={20} />}
           />
         </View>
+      </View>
 
-        <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
-          <View style={styles.heroCard}>
-            <VideoThumbnail
-              thumbnailUrl={video.thumbnailUrl}
-              platform={video.platform}
-              variant="detailHero"
-              showPlatformBadge={false}
-            >
-              <View style={styles.heroShade} />
-              <View style={styles.platformBadge}>
-                <PlatformIcon platform={video.platform} size={14} />
-                <Text style={styles.platformText}>{video.platform}</Text>
-              </View>
-            </VideoThumbnail>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: insets.bottom + 34,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroCard}>
+            <Animated.View style={heroStyle}>
+              <VideoThumbnail
+                thumbnailUrl={video.thumbnailUrl}
+                videoUrl={video.videoUrl}
+                videoId={video.id}
+                platform={video.platform}
+                variant="detailHero"
+                showPlatformBadge={false}
+              >
+                <View style={styles.platformBadge}>
+                  <PlatformIcon platform={video.platform} size={14} />
+                  <Text style={styles.platformText}>{video.platform}</Text>
+                </View>
+              </VideoThumbnail>
+            </Animated.View>
           </View>
 
-          <View style={{ marginTop: 22 }}>
-            <Text style={styles.title}>{video.title}</Text>
+          {isVideoUnavailable(video) ? (
+            <View
+              style={{
+                marginTop: 16,
+                backgroundColor: "#F3EFEA",
+                borderRadius: 18,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+              }}
+            >
+              <Text
+                style={{
+                  color: GREY_TEXT,
+                  fontSize: 14,
+                  lineHeight: 20,
+                  fontFamily: "Inter_500Medium",
+                }}
+              >
+                This video may have been deleted or made private.
+              </Text>
+            </View>
+          ) : null}
+
+          <Animated.View style={[{ marginTop: 24 }, titleStyle]}>
+            <Text style={styles.title}>{getDisplayTitle(video.title)}</Text>
             <View style={styles.creatorRow}>
-              <UserRound size={14} color={GREY_TEXT} />
+              <RecallProfileIcon name="user" size={14} />
               <Text style={styles.creator}>{video.creator}</Text>
             </View>
             <Text style={styles.savedPrompt}>
               {getSavedWeeksLabel(video.savedAt)}. Still interested?
             </Text>
-          </View>
+          </Animated.View>
 
-          <Pressable
-            onPress={openVideo}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              { backgroundColor: pressed ? "#1F1F1F" : BLACK },
-            ]}
-          >
-            <Play size={17} color={WHITE} fill={WHITE} />
-            <Text style={styles.primaryButtonText}>Open Video</Text>
-          </Pressable>
+          <Animated.View style={belowTitleStyle}>
+            <Pressable
+              onPress={openVideo}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: pressed ? "#1F1F1F" : BLACK },
+              ]}
+            >
+              <RecallActionIcon name="play" size={17} />
+              <Text style={styles.primaryButtonText}>Open Video</Text>
+            </Pressable>
+
+            <View style={styles.card}>
+              <InfoRow
+                icon={<RecallSavedContentIcon name="saved" size={17} />}
+                label="Saved"
+                value={`${getSavedWeeksLabel(video.savedAt)}\n${savedDate}`}
+              />
+              <InfoRow
+                icon={<RecallSavedContentIcon name="collections" size={17} />}
+                label="Category"
+                value={`${category.emoji} ${category.label}`}
+              />
+              <InfoRow
+                icon={<RecallReminderIcon name="worth-revisiting" size={17} />}
+                label="Revisits"
+                value={openedLabel}
+              />
+              <InfoRow
+                icon={<RecallSavedContentIcon name="last-opened" size={17} />}
+                label="Last opened"
+                value={lastOpened ? `${lastOpened}` : "Not opened yet"}
+                isLast
+              />
+            </View>
+          </Animated.View>
+
+          <View style={styles.card}>
+            <ActionRow
+              title={
+                showActiveReminderSchedule
+                  ? "Reminder on"
+                  : onceReminderCompleted
+                    ? "Reminder completed"
+                    : "Add reminder"
+              }
+              subtitle={
+                showActiveReminderSchedule
+                  ? formatReminderScheduleLabel(video)
+                  : onceReminderCompleted
+                    ? "This one-time reminder already fired."
+                    : "Set a gentle reminder for this save."
+              }
+              icon={
+                video.reminderEnabled ? (
+                  <RecallReminderIcon name="bell" size={16} />
+                ) : (
+                  <BellOff size={16} color={GREY_TEXT} />
+                )
+              }
+              onPress={() => setShowReminderSetup(true)}
+            />
+            <View style={styles.groupDivider} />
+            <ActionRow
+              title="Add to Collection"
+              subtitle={
+                videoCollections.length > 0
+                  ? videoCollections.map((c) => c.name).join(", ")
+                  : "Not in a collection yet"
+              }
+              icon={<RecallSavedContentIcon name="collections" size={16} />}
+              onPress={() => setShowCollectionPicker(true)}
+            />
+          </View>
 
           <View style={styles.card}>
             <InfoRow
-              icon={<CalendarDays size={17} color={GREY_TEXT} />}
-              label="Saved"
-              value={`${getSavedWeeksLabel(video.savedAt)} - ${savedDate}`}
-            />
-            <InfoRow
-              icon={<FolderOpen size={17} color={GREY_TEXT} />}
-              label="Category"
-              value={`${category.emoji} ${category.label}`}
-            />
-            <InfoRow
-              icon={<RotateCcw size={17} color={GREY_TEXT} />}
-              label="Revisits"
-              value={openedLabel}
-            />
-            <InfoRow
-              icon={<Clock size={17} color={GREY_TEXT} />}
-              label="Last opened"
-              value={lastOpened ? `${lastOpened}` : "Not opened yet"}
-              isLast
-            />
-          </View>
-
-          <SectionCard
-            title={video.reminderEnabled ? "Reminder on" : "Add reminder"}
-            icon={
-              video.reminderEnabled ? (
-                <Bell size={17} color={BLACK} />
-              ) : (
-                <BellOff size={17} color={BLACK} />
-              )
-            }
-            trailing={<ChevronRight size={16} color={GREY_TEXT} />}
-            onPress={() => setShowReminderSetup(true)}
-          >
-            <Text style={styles.sectionCopy}>
-              {video.reminderEnabled
-                ? `${video.reminderTime} - ${video.reminderFrequency}`
-                : "Set a gentle reminder for this save."}
-            </Text>
-          </SectionCard>
-
-          <SectionCard
-            title="Add to Collection"
-            icon={<FolderOpen size={17} color={BLACK} />}
-            trailing={<ChevronRight size={16} color={GREY_TEXT} />}
-            onPress={() => setShowCollectionPicker(true)}
-          >
-            <Text style={styles.sectionCopy}>
-              {videoCollections.length > 0
-                ? videoCollections.map((c) => c.name).join(", ")
-                : "Not in a collection yet"}
-            </Text>
-            {videoCollections.length > 0 ? (
-              <View style={styles.chipWrap}>
-                {videoCollections.map((collection) => (
-                  <View
-                    key={collection.id}
-                    style={[styles.chip, styles.chipSelected]}
-                  >
-                    <Text style={[styles.chipText, styles.chipTextSelected]}>
-                      {collection.emoji} {collection.name}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </SectionCard>
-
-          <View style={styles.card}>
-            <InfoRow
-              icon={<Bell size={17} color={GREY_TEXT} />}
+              icon={<RecallReminderIcon name="bell" size={17} />}
               label="Reminder"
               value={
-                video.reminderEnabled
-                  ? `Reminder on - ${video.reminderTime}`
-                  : "Reminder off"
+                showActiveReminderSchedule
+                  ? formatReminderScheduleLabel(video)
+                  : onceReminderCompleted
+                    ? "Completed"
+                    : "Reminder off"
               }
             />
             <InfoRow
-              icon={<RotateCcw size={17} color={GREY_TEXT} />}
+              icon={<RecallReminderIcon name="worth-revisiting" size={17} />}
               label="Signal"
               value={
-                daysAgoFromISO(video.savedAt) >= 14
-                  ? "Worth revisiting"
+                isWorthRevisitingEligible(video)
+                  ? video.devWorthRevisitingOverride
+                    ? "Worth revisiting (dev)"
+                    : "Worth revisiting"
                   : "Recently saved"
               }
               isLast
             />
           </View>
 
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 18 }}>
             <SecondaryButton
-              icon={<Archive size={16} color={BLACK} />}
+              icon={<RecallSavedContentIcon name="archive" size={16} />}
               label="Archive"
               onPress={archiveCurrentVideo}
             />
@@ -397,15 +450,14 @@ export default function VideoDetailScreen() {
           </View>
 
           {__DEV__ ? (
-            <View style={{ marginTop: 10 }}>
+            <View style={{ marginTop: 12 }}>
               <SecondaryButton
-                icon={<RotateCcw size={16} color={BLACK} />}
+                icon={<RecallReminderIcon name="worth-revisiting" size={16} />}
                 label="Make Worth Revisiting"
                 onPress={makeWorthRevisitingForDebug}
               />
             </View>
           ) : null}
-        </View>
       </ScrollView>
 
       <ReminderSetupModal
@@ -441,6 +493,7 @@ export default function VideoDetailScreen() {
       <CollectionSelectionModal
         visible={showCollectionPicker}
         insets={insets}
+        thumbnailUrl={video.thumbnailUrl}
         collections={collections}
         selectedCollectionIds={videoCollections.map((collection) => collection.id)}
         onClose={() => setShowCollectionPicker(false)}
@@ -459,11 +512,16 @@ export default function VideoDetailScreen() {
         collections={collections}
         onClose={() => setShowEditVideo(false)}
         onCreateCollection={addCollection}
+        onDelete={() => {
+          setShowEditVideo(false);
+          requestAnimationFrame(deleteCurrentVideo);
+        }}
         onSave={async (details) => {
           const result = await updateVideo(video.id, {
             title: details.title,
             creator: details.creator,
             category: details.category,
+            notes: details.notes,
           });
           if (result === null) {
             return;
@@ -535,6 +593,21 @@ function InfoRow({ icon, label, value, isLast = false }) {
   );
 }
 
+function ActionRow({ title, subtitle, icon, onPress }) {
+  return (
+    <Pressable onPress={onPress} style={styles.actionRow}>
+      <View style={styles.infoIcon}>{icon}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionCopy} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      </View>
+      <ChevronRight size={17} color={GREY_TEXT} />
+    </Pressable>
+  );
+}
+
 function SectionCard({ title, icon, trailing, onPress, children }) {
   return (
     <Pressable onPress={onPress} style={styles.card}>
@@ -576,36 +649,34 @@ function formatDate(isoString) {
 }
 
 const styles = {
+  navRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: WHITE,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    elevation: 3,
+    overflow: "visible",
+    shadowColor: "#8D7A68",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    elevation: 2,
   },
   heroCard: {
     borderRadius: 30,
     overflow: "hidden",
     backgroundColor: WHITE,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 26,
-    elevation: 7,
-  },
-  heroShade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 110,
-    backgroundColor: "rgba(0,0,0,0.28)",
+    shadowColor: "#8D7A68",
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.09,
+    shadowRadius: 22,
+    elevation: 3,
   },
   platformBadge: {
     position: "absolute",
@@ -625,84 +696,97 @@ const styles = {
     color: BLACK,
   },
   title: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
+    fontSize: 30,
+    fontFamily: SERIF,
     color: BLACK,
-    letterSpacing: -0.8,
+    letterSpacing: -0.9,
     lineHeight: 34,
   },
   creatorRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 8,
+    marginTop: 10,
   },
   creator: {
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Inter_500Medium",
     color: GREY_TEXT,
   },
   savedPrompt: {
-    marginTop: 10,
+    marginTop: 14,
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "Inter_400Regular",
     color: GREY_TEXT,
     lineHeight: 19,
   },
   primaryButton: {
-    marginTop: 22,
-    borderRadius: 20,
-    paddingVertical: 17,
+    marginTop: 20,
+    borderRadius: 19,
+    minHeight: 54,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 9,
   },
   primaryButtonText: {
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
     color: WHITE,
   },
   card: {
-    marginTop: 16,
+    marginTop: 14,
     backgroundColor: WHITE,
-    borderRadius: 26,
-    padding: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    shadowColor: "#8D7A68",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
     shadowRadius: 18,
-    elevation: 3,
+    elevation: 2,
   },
   infoRow: {
-    minHeight: 52,
+    minHeight: 54,
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderBottomColor: GREY_LIGHT,
-    gap: 10,
+    borderBottomColor: "rgba(231,222,211,0.65)",
+    gap: 11,
   },
   infoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
-    backgroundColor: GREY_LIGHT,
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "#F7F1EA",
     justifyContent: "center",
     alignItems: "center",
+    flexShrink: 0,
   },
   infoLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 13.5,
     fontFamily: "Inter_500Medium",
     color: GREY_TEXT,
   },
   infoValue: {
-    flex: 1.25,
+    flex: 1.35,
     textAlign: "right",
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
     color: BLACK,
-    lineHeight: 18,
+    lineHeight: 17,
+  },
+  actionRow: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  groupDivider: {
+    height: 1,
+    marginLeft: 42,
+    backgroundColor: "rgba(231,222,211,0.65)",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -711,16 +795,17 @@ const styles = {
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
     color: BLACK,
-    letterSpacing: -0.3,
+    letterSpacing: -0.15,
   },
   sectionCopy: {
-    fontSize: 13,
+    marginTop: 3,
+    fontSize: 11.5,
     fontFamily: "Inter_400Regular",
     color: GREY_TEXT,
-    lineHeight: 19,
+    lineHeight: 16,
   },
   chipWrap: {
     flexDirection: "row",
@@ -747,13 +832,17 @@ const styles = {
   },
   secondaryButton: {
     flex: 1,
-    marginTop: 16,
-    borderRadius: 20,
-    paddingVertical: 15,
+    borderRadius: 19,
+    minHeight: 58,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
+    shadowColor: "#8D7A68",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    elevation: 2,
   },
   secondaryText: {
     fontSize: 14,

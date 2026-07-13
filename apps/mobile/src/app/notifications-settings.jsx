@@ -11,7 +11,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Bell, ChevronLeft } from "lucide-react-native";
+import {
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react-native";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -28,26 +32,29 @@ import {
   scheduleDebugNotificationInTenSeconds,
   updateNotificationPreferences,
 } from "../services/recallNotifications";
+import { RECALL_COLORS } from "../constants/recallTheme";
 
-const BG = "#F8F8F8";
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F7";
-const GREY_MID = "#C7C7CC";
+const BG = RECALL_COLORS.background;
+const WHITE = RECALL_COLORS.surface;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.secondaryText;
+const GREY_LIGHT = RECALL_COLORS.subtle;
+const GREY_MID = RECALL_COLORS.mid;
+const BORDER = RECALL_COLORS.border;
+const ACCENT = RECALL_COLORS.accent;
 
 function SettingsCard({ children }) {
   return (
     <View
       style={{
         backgroundColor: WHITE,
-        borderRadius: 20,
+        borderRadius: 24,
         overflow: "hidden",
-        shadowColor: BLACK,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 10,
-        elevation: 1,
+        shadowColor: "#8D7A68",
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.07,
+        shadowRadius: 18,
+        elevation: 2,
       }}
     >
       {children}
@@ -60,8 +67,9 @@ function Divider({ indent = 18 }) {
     <View
       style={{
         height: 1,
-        backgroundColor: GREY_LIGHT,
+        backgroundColor: "rgba(231,222,211,0.68)",
         marginLeft: indent,
+        marginRight: 18,
       }}
     />
   );
@@ -78,7 +86,7 @@ function ToggleRow({
     <View
       style={{
         paddingHorizontal: 18,
-        paddingVertical: 16,
+        paddingVertical: 14,
         flexDirection: "row",
         alignItems: "center",
         gap: 16,
@@ -113,44 +121,51 @@ function ToggleRow({
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: GREY_LIGHT, true: BLACK }}
+        trackColor={{ false: "#E9E2DA", true: BLACK }}
         thumbColor={WHITE}
       />
     </View>
   );
 }
 
-function InfoRow({ title, subtitle }) {
+function InfoRow({ title, subtitle, onPress }) {
   return (
-    <View
+    <Pressable
+      onPress={onPress}
       style={{
         paddingHorizontal: 18,
-        paddingVertical: 16,
-        gap: 2,
+        paddingVertical: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
       }}
     >
-      <Text
-        style={{
-          fontSize: 15,
-          fontFamily: "Inter_500Medium",
-          color: BLACK,
-        }}
-      >
-        {title}
-      </Text>
-      {subtitle ? (
+      <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: 12,
-            fontFamily: "Inter_400Regular",
-            color: GREY_TEXT,
-            lineHeight: 18,
+            fontSize: 15,
+            fontFamily: "Inter_500Medium",
+            color: BLACK,
           }}
         >
-          {subtitle}
+          {title}
         </Text>
-      ) : null}
-    </View>
+        {subtitle ? (
+          <Text
+            style={{
+              marginTop: 2,
+              fontSize: 12,
+              fontFamily: "Inter_400Regular",
+              color: GREY_TEXT,
+              lineHeight: 17,
+            }}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {onPress ? <ChevronRight size={17} color={GREY_MID} /> : null}
+    </Pressable>
   );
 }
 
@@ -174,6 +189,9 @@ export default function NotificationsSettingsScreen() {
   const [testMessage, setTestMessage] = useState("");
   const reminderFollowUpCount = videos.filter(
     (video) => (video.reminderFollowUpDelayMinutes ?? 0) > 0,
+  ).length;
+  const activeReminderCount = videos.filter(
+    (video) => video.reminderEnabled && !video.archived,
   ).length;
 
   useEffect(() => {
@@ -242,7 +260,7 @@ export default function NotificationsSettingsScreen() {
 
   const permissionTitle =
     permissionStatus === "granted"
-      ? "Notifications allowed"
+      ? "Notifications enabled"
       : permissionStatus === "denied"
         ? "Notifications blocked"
         : permissionStatus === "unavailable"
@@ -250,26 +268,20 @@ export default function NotificationsSettingsScreen() {
           : "Allow notifications";
   const permissionDescription =
     permissionStatus === "granted"
-      ? "Recall can send reminder nudges for saved videos."
+      ? "Recall can gently resurface saved videos."
       : permissionStatus === "denied"
         ? "Turn notifications on in your device settings to get reminder nudges."
         : permissionStatus === "unavailable"
           ? "Local notifications are available on iPhone and Android."
-          : "Allow notifications so Recall can send reminder nudges for saved videos.";
+          : "Allow gentle reminder nudges for videos you wanted to revisit.";
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <View
         style={{
-          backgroundColor: WHITE,
-          paddingTop: insets.top + 12,
-          paddingBottom: 20,
+          paddingTop: insets.top + 18,
+          paddingBottom: 18,
           paddingHorizontal: 20,
-          shadowColor: BLACK,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.04,
-          shadowRadius: 10,
-          elevation: 3,
         }}
       >
         <Pressable
@@ -278,10 +290,15 @@ export default function NotificationsSettingsScreen() {
             width: 40,
             height: 40,
             borderRadius: 20,
-            backgroundColor: pressed ? "#ECECEA" : GREY_LIGHT,
+            backgroundColor: pressed ? "#EEE7DE" : WHITE,
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 16,
+            marginBottom: 20,
+            shadowColor: "#8D7A68",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.06,
+            shadowRadius: 14,
+            elevation: 2,
           })}
         >
           <ChevronLeft size={20} color={BLACK} />
@@ -289,23 +306,24 @@ export default function NotificationsSettingsScreen() {
 
         <Text
           style={{
-            fontSize: 28,
-            fontFamily: "Inter_700Bold",
+            fontSize: 36,
+            lineHeight: 42,
+            fontFamily: "Georgia",
             color: BLACK,
-            letterSpacing: -0.8,
+            letterSpacing: -1,
           }}
         >
           Notifications
         </Text>
         <Text
           style={{
-            fontSize: 13,
+            fontSize: 14,
             fontFamily: "Inter_400Regular",
             color: GREY_TEXT,
             marginTop: 4,
           }}
         >
-          Manage reminder nudges for your saved videos.
+          Gentle nudges for moments worth returning to.
         </Text>
       </View>
 
@@ -313,34 +331,33 @@ export default function NotificationsSettingsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: 20,
-          paddingTop: 24,
+          paddingTop: 8,
           paddingBottom: insets.bottom + 28,
-          gap: 16,
+          gap: 18,
         }}
         showsVerticalScrollIndicator={false}
       >
         <SettingsCard>
           <View
             style={{
-              paddingHorizontal: 18,
-              paddingTop: 18,
-              paddingBottom: 16,
+              paddingHorizontal: 16,
+              paddingVertical: 14,
               flexDirection: "row",
-              gap: 14,
+              gap: 12,
               alignItems: "center",
             }}
           >
             <View
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
+                width: 36,
+                height: 36,
+                borderRadius: 12,
                 backgroundColor: GREY_LIGHT,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Bell size={18} color={BLACK} />
+              <RecallReminderIcon name="bell" size={17} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
@@ -364,55 +381,103 @@ export default function NotificationsSettingsScreen() {
                 {permissionDescription}
               </Text>
             </View>
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor:
+                  permissionStatus === "granted" ? "#4CB477" : GREY_MID,
+              }}
+            />
           </View>
 
-          <Divider />
-
-          <Pressable
+          {permissionStatus !== "granted" ? (
+            <>
+              <Divider />
+              <Pressable
             onPress={
               permissionStatus === "denied"
                 ? () => Linking.openSettings()
                 : handleRequestPermission
             }
-            disabled={permissionStatus === "granted" || isLoading}
+            disabled={permissionStatus === "unavailable" || isLoading}
             style={({ pressed }) => ({
-              marginHorizontal: 18,
-              marginTop: 16,
-              marginBottom: 18,
+              marginHorizontal: 16,
+              marginVertical: 14,
               borderRadius: 16,
-              backgroundColor:
-                permissionStatus === "granted"
-                  ? GREY_LIGHT
-                  : pressed
-                    ? "#1F1F1F"
-                    : BLACK,
-              paddingVertical: 14,
+              backgroundColor: pressed ? "#2A241F" : BLACK,
+              paddingVertical: 13,
               alignItems: "center",
               opacity: isLoading ? 0.7 : 1,
             })}
           >
             <Text
               style={{
-                fontSize: 14,
+                fontSize: 13,
                 fontFamily: "Inter_600SemiBold",
-                color: permissionStatus === "granted" ? BLACK : WHITE,
+                color: WHITE,
               }}
             >
-              {permissionStatus === "granted"
-                ? "Notifications allowed"
-                : permissionStatus === "denied"
+              {permissionStatus === "denied"
                   ? "Open Device Settings"
                   : permissionStatus === "unavailable"
                     ? "Available on mobile"
                     : "Allow Notifications"}
             </Text>
-          </Pressable>
+              </Pressable>
+            </>
+          ) : null}
         </SettingsCard>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            paddingHorizontal: 4,
+          }}
+        >
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 12,
+              backgroundColor: "#F2EADF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <RecallReminderIcon name="this-week" size={16} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: "Inter_500Medium",
+                color: ACCENT,
+              }}
+            >
+              This week
+            </Text>
+            <Text
+              style={{
+                marginTop: 1,
+                fontSize: 14,
+                fontFamily: "Inter_500Medium",
+                color: BLACK,
+              }}
+            >
+              {activeReminderCount} reminder
+              {activeReminderCount === 1 ? "" : "s"} ready to resurface.
+            </Text>
+          </View>
+        </View>
 
         <SettingsCard>
           <ToggleRow
             title="Reminders"
-            subtitle="Send notifications for videos you schedule."
+            subtitle="Reminder nudges for videos you wanted to revisit."
             value={preferences.reminderNotifications}
             onValueChange={handleToggleReminders}
             disabled={
@@ -423,7 +488,12 @@ export default function NotificationsSettingsScreen() {
           <Divider />
           <InfoRow
             title="Reminder follow-up"
-            subtitle="Set per reminder when you want another nudge if you don’t open it."
+            subtitle={
+              reminderFollowUpCount > 0
+                ? `${reminderFollowUpCount} reminder${reminderFollowUpCount === 1 ? "" : "s"} currently check back in.`
+                : "Choose when Recall checks back in."
+            }
+            onPress={() => router.push("/(tabs)/calendar")}
           />
         </SettingsCard>
 
@@ -431,8 +501,8 @@ export default function NotificationsSettingsScreen() {
           <View
             style={{
               paddingHorizontal: 18,
-              paddingTop: 18,
-              paddingBottom: 12,
+              paddingTop: 16,
+              paddingBottom: 13,
             }}
           >
             <Text
@@ -443,7 +513,7 @@ export default function NotificationsSettingsScreen() {
                 marginBottom: 4,
               }}
             >
-              Want reminders to stay on screen?
+              Keep a reminder in view
             </Text>
             <Text
               style={{
@@ -453,7 +523,7 @@ export default function NotificationsSettingsScreen() {
                 lineHeight: 18,
               }}
             >
-              Set Recall banners to Persistent in iPhone Settings.
+              Use Persistent banners when you want a nudge to stay visible.
             </Text>
           </View>
 
@@ -463,31 +533,48 @@ export default function NotificationsSettingsScreen() {
             onPress={showPersistentBannerHelp}
             style={({ pressed }) => ({
               paddingHorizontal: 18,
-              paddingVertical: 16,
-              backgroundColor: pressed ? "#FAFAFA" : WHITE,
+              paddingVertical: 14,
+              backgroundColor: pressed ? "#F8F3ED" : WHITE,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
             })}
           >
-            <Text
+            <View
               style={{
-                fontSize: 14,
-                fontFamily: "Inter_600SemiBold",
-                color: BLACK,
+                width: 34,
+                height: 34,
+                borderRadius: 12,
+                backgroundColor: GREY_LIGHT,
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              How to make reminders persistent
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                fontFamily: "Inter_400Regular",
-                color: GREY_TEXT,
-                lineHeight: 18,
-                marginTop: 4,
-              }}
-            >
-              Settings &gt; Notifications &gt; Recall &gt; Banner Style &gt;
-              Persistent
-            </Text>
+              <RecallReminderIcon name="later" size={16} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontFamily: "Inter_600SemiBold",
+                  color: BLACK,
+                }}
+              >
+                How to make reminders persistent
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11.5,
+                  fontFamily: "Inter_400Regular",
+                  color: GREY_TEXT,
+                  lineHeight: 17,
+                  marginTop: 3,
+                }}
+              >
+                Settings &gt; Notifications &gt; Recall &gt; Banner Style
+              </Text>
+            </View>
+            <ChevronRight size={17} color={GREY_MID} />
           </Pressable>
         </SettingsCard>
 

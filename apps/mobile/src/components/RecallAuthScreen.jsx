@@ -11,15 +11,14 @@ import {
 } from "@expo-google-fonts/dev";
 import {
   ArrowRight,
-  Bookmark,
   Check,
   ChevronLeft,
   Eye,
   EyeOff,
   Lock,
-  Mail,
-  ShieldCheck,
 } from "lucide-react-native";
+import { RecallProfileIcon } from "./RecallProfileIcon";
+import { RecallSavedContentIcon } from "./RecallSavedContentIcon";
 import {
   getFriendlySupabaseError,
   requestRecallPasswordReset,
@@ -27,6 +26,11 @@ import {
   signInToRecall,
   signUpToRecall,
 } from "../services/supabaseClient";
+import {
+  setRecallWhatsNextPending,
+  markRecallWhatsNextSignupIntent,
+  clearRecallWhatsNextSignupIntent,
+} from "../services/onboardingService";
 
 const BG = "#F7F7F5";
 const BLACK = "#111111";
@@ -282,16 +286,21 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
     resetMessages();
 
     try {
+      await markRecallWhatsNextSignupIntent().catch(() => null);
       const result = await signUpToRecall({
         email: email.trim(),
         password,
       });
+      if (result.user?.id) {
+        await setRecallWhatsNextPending(result.user.id).catch(() => null);
+      }
       if (!result.session) {
         setInfoMessage(
           "Account created. If you do not enter Recall right away, check your email for a confirmation link.",
         );
       }
     } catch (error) {
+      await clearRecallWhatsNextSignupIntent().catch(() => null);
       setErrorMessage(
         getFriendlySupabaseError(
           error,
@@ -380,12 +389,25 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
         .join(" ")
         .trim();
 
-      await signInWithAppleToRecall({
+      const result = await signInWithAppleToRecall({
         identityToken: credential.identityToken,
         accessToken: credential.authorizationCode || undefined,
         nonce,
         displayName: displayName || null,
       });
+
+      if (result?.user?.id) {
+        const createdAtMs = result.user.created_at
+          ? new Date(result.user.created_at).getTime()
+          : 0;
+        const isNewAccount =
+          createdAtMs > 0 && Date.now() - createdAtMs < 10 * 60 * 1000;
+
+        if (isNewAccount) {
+          await markRecallWhatsNextSignupIntent().catch(() => null);
+          await setRecallWhatsNextPending(result.user.id).catch(() => null);
+        }
+      }
     } catch (error) {
       console.error("[Recall Apple Sign In]", error);
       if (error?.code === "ERR_REQUEST_CANCELED") {
@@ -465,7 +487,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
                   marginBottom: 6,
                 }}
               >
-                <Bookmark size={26} color={BLACK} strokeWidth={2.1} />
+                <RecallSavedContentIcon name="bookmark" size={26} />
                 <Text
                   style={{
                     fontSize: 28,
@@ -576,7 +598,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
             keyboardType="email-address"
             autoCapitalize="none"
             isCreateMode={usesHeroLayout}
-            icon={<Mail size={22} color="#6D6255" strokeWidth={2} />}
+            icon={<RecallProfileIcon name="contact" size={22} />}
           />
           <Field
             label="Password"
@@ -625,7 +647,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
                 gap: 14,
               }}
             >
-              <ShieldCheck size={24} color="#6D6255" strokeWidth={2} />
+              <RecallProfileIcon name="shield-check" size={24} />
               <Text
                 style={{
                   flex: 1,
@@ -836,7 +858,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
                 gap: 14,
               }}
             >
-              <ShieldCheck size={24} color="#8A6B45" strokeWidth={2} />
+              <RecallProfileIcon name="shield-check" size={24} />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{

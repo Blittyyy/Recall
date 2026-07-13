@@ -1,10 +1,11 @@
 import { Pressable, Text, View } from "react-native";
+import { RECALL_COLORS } from "../constants/recallTheme";
 
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F0";
-const GREY_BORDER = "#ECEAE4";
+const WHITE = RECALL_COLORS.surfaceStrong;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.mutedText;
+const GREY_LIGHT = RECALL_COLORS.subtleStrong;
+const GREY_BORDER = RECALL_COLORS.border;
 
 export function EmptyStateCard({
   icon = "O",

@@ -2,12 +2,9 @@ import { View, Text, Animated, TextInput, Pressable } from "react-native";
 import {
   Link2,
   Clipboard,
-  Instagram,
-  Youtube,
   X,
   AlertCircle,
 } from "lucide-react-native";
-import { TikTokIcon } from "./TikTokIcon";
 import { PlatformIcon } from "./PlatformIcon";
 import {
   WHITE,
@@ -42,25 +39,25 @@ export function UrlInputSection({
       <Animated.View
         style={{
           paddingHorizontal: 20,
-          marginBottom: 8,
+          marginBottom: 12,
           transform: [{ translateX: errorShake }],
         }}
       >
         <View
           style={{
             backgroundColor: WHITE,
-            borderRadius: 20,
+            borderRadius: 28,
             borderWidth: urlError ? 1.5 : hasLink ? 1.5 : 0,
             borderColor: urlError
               ? RED
               : hasLink
                 ? "rgba(52,199,89,0.4)"
                 : "transparent",
-            shadowColor: BLACK,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.06,
-            shadowRadius: 16,
-            elevation: 3,
+            shadowColor: "#8D7A68",
+            shadowOffset: { width: 0, height: 5 },
+            shadowOpacity: 0.07,
+            shadowRadius: 18,
+            elevation: 2,
             overflow: "hidden",
           }}
         >
@@ -68,13 +65,16 @@ export function UrlInputSection({
             style={{
               flexDirection: "row",
               alignItems: "center",
+              margin: 14,
+              marginBottom: 10,
               paddingHorizontal: 18,
-              paddingVertical: 6,
-              minHeight: 64,
+              minHeight: 72,
+              borderRadius: 20,
+              backgroundColor: "#FBF8F4",
             }}
           >
             <Link2
-              size={20}
+              size={19}
               color={urlError ? RED : hasLink ? GREEN : GREY_MID}
               style={{ marginRight: 12 }}
             />
@@ -89,7 +89,7 @@ export function UrlInputSection({
               returnKeyType="done"
               style={{
                 flex: 1,
-                fontSize: 15,
+                fontSize: 16,
                 fontFamily: "Inter_400Regular",
                 color: BLACK,
                 paddingVertical: 10,
@@ -114,40 +114,61 @@ export function UrlInputSection({
           </View>
 
           {url.length === 0 && (
-            <Pressable
-              onPress={onPasteFromClipboard}
+            <>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 28,
+                }}
+              >
+                <View style={{ flex: 1, height: 1, backgroundColor: "#E7DED3" }} />
+                <Text
+                  style={{
+                    marginHorizontal: 16,
+                    fontSize: 13,
+                    fontFamily: "Inter_400Regular",
+                    color: GREY_MID,
+                  }}
+                >
+                  or
+                </Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: "#E7DED3" }} />
+              </View>
+              <Pressable
+                onPress={onPasteFromClipboard}
               style={{
-                borderTopWidth: 1,
-                borderTopColor: GREY_LIGHT,
                 flexDirection: "row",
                 alignItems: "center",
-                paddingHorizontal: 18,
-                paddingVertical: 14,
-                gap: 16,
+                justifyContent: "space-between",
+                paddingHorizontal: 26,
+                paddingTop: 22,
+                paddingBottom: 24,
               }}
             >
               <View
                 style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
               >
-                <Clipboard size={14} color={GREY_MID} />
+                <Clipboard size={17} color={BLACK} />
                 <Text
                   style={{
-                    fontSize: 13,
-                    fontFamily: "Inter_400Regular",
-                    color: GREY_MID,
+                    fontSize: 14,
+                    fontFamily: "Inter_500Medium",
+                    color: BLACK,
                   }}
                 >
                   Paste from clipboard
                 </Text>
               </View>
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 18 }}
               >
-                <TikTokIcon size={13} color={GREY_MID} />
-                <Instagram size={13} color={GREY_MID} />
-                <Youtube size={13} color={GREY_MID} />
+                <PlatformIcon platform="tiktok" size={17} />
+                <PlatformIcon platform="instagram" size={17} />
+                <PlatformIcon platform="youtube" size={17} />
               </View>
             </Pressable>
+            </>
           )}
         </View>
       </Animated.View>

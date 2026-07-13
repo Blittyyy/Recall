@@ -9,6 +9,7 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.blitty.recall",
+      "appleTeamId": "QK235K3KYL",
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "infoPlist": {
@@ -61,7 +62,8 @@
       "expo-font",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      "@bacons/apple-targets"
     ],
     "web": {
       "bundler": "metro",

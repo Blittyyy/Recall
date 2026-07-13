@@ -9,7 +9,9 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/dev";
-import { Bookmark, ChevronLeft, FolderOpen, Sparkles } from "lucide-react-native";
+import { ChevronLeft } from "lucide-react-native";
+import { RecallSavedContentIcon } from "./RecallSavedContentIcon";
+import { RecallReminderIcon } from "./RecallReminderIcon";
 
 const BG = "#F7F7F5";
 const BLACK = "#111111";
@@ -23,10 +25,10 @@ const ONBOARDING_PAGE_FOUR_IMAGE = require("../../assets/images/onboarding-page-
 
 function StepIcon({ index }) {
   const icons = [
-    <Bookmark key="bookmark" size={32} color={BLACK} strokeWidth={2.1} />,
-    <Bookmark key="save" size={32} color={BLACK} strokeWidth={2.1} />,
-    <FolderOpen key="folder" size={32} color={BLACK} strokeWidth={2.1} />,
-    <Sparkles key="sparkles" size={32} color={BLACK} strokeWidth={2.1} />,
+    <RecallSavedContentIcon key="bookmark" name="bookmark" size={32} />,
+    <RecallSavedContentIcon key="save" name="bookmark" size={32} />,
+    <RecallSavedContentIcon key="folder" name="folder" size={32} />,
+    <RecallReminderIcon key="sparkles" name="sparkles" size={32} />,
   ];
 
   return icons[index] ?? icons[0];
@@ -133,7 +135,7 @@ function FirstSlide({ step }) {
             marginBottom: 10,
           }}
         >
-          <Bookmark size={28} color={BLACK} strokeWidth={2.1} />
+          <RecallSavedContentIcon name="bookmark" size={28} />
           <Text
             style={{
               fontSize: 32,
@@ -265,81 +267,106 @@ function DefaultSlide({ stepIndex, step }) {
   );
 }
 
+const ONBOARDING_COPY_TOP = 338;
+
+function OnboardingSlideCopy({
+  title,
+  body,
+  titleStyle,
+  bodyStyle,
+  maxWidth = 360,
+  titleProps = {},
+  top = ONBOARDING_COPY_TOP,
+}) {
+  return (
+    <View
+      style={{
+        position: "absolute",
+        top,
+        left: 0,
+        right: 0,
+        paddingHorizontal: 16,
+        alignItems: "center",
+      }}
+    >
+      <View style={{ width: "100%", maxWidth, alignItems: "center" }}>
+        <Text style={titleStyle} {...titleProps}>
+          {title}
+        </Text>
+        <Text style={bodyStyle}>{body}</Text>
+      </View>
+    </View>
+  );
+}
+
 function SecondSlide({ step }) {
   return (
-    <View style={{ flex: 1, width: "100%", alignItems: "center" }}>
+    <View style={{ flex: 1, width: "100%" }}>
       <View
         style={{
-          flex: 0.52,
-          width: "100%",
+          position: "absolute",
+          top: -18,
+          left: 0,
+          right: 0,
+          height: 352,
           alignItems: "center",
-          justifyContent: "flex-start",
+          justifyContent: "center",
+          overflow: "hidden",
         }}
       >
         <Image
           source={ONBOARDING_PAGE_TWO_IMAGE}
           contentFit="contain"
           style={{
-            width: 460,
-            height: 460,
-            minHeight: 420,
-            marginTop: -100,
-            transform: [{ scale: 1.52 }],
+            width: 480,
+            height: 480,
+            transform: [{ scale: 1.44 }],
           }}
         />
       </View>
 
-      <View
-        style={{
-          flex: 0.24,
-          width: "100%",
-          alignItems: "center",
-          justifyContent: "flex-start",
-          paddingHorizontal: 16,
-          marginTop: 164,
-          marginBottom: 0,
+      <OnboardingSlideCopy
+        title={step.title}
+        body={step.text}
+        maxWidth={340}
+        top={358}
+        titleProps={{
+          numberOfLines: 1,
+          adjustsFontSizeToFit: true,
+          minimumFontScale: 0.88,
         }}
-      >
-        <Text
-          style={{
-            fontSize: 32,
-            color: BLACK,
-            fontFamily: "Georgia",
-            letterSpacing: -1.3,
-            lineHeight: 34,
-            textAlign: "center",
-            marginBottom: 18,
-            maxWidth: 360,
-          }}
-          numberOfLines={2}
-        >
-          {step.title}
-        </Text>
-
-        <Text
-          style={{
-            fontSize: 15,
-            fontFamily: "Inter_400Regular",
-            color: "#4F4F54",
-            lineHeight: 22,
-            textAlign: "center",
-            maxWidth: 360,
-          }}
-        >
-          {step.text}
-        </Text>
-      </View>
+        titleStyle={{
+          fontSize: 31,
+          color: BLACK,
+          fontFamily: "Georgia",
+          letterSpacing: -0.9,
+          lineHeight: 34,
+          textAlign: "center",
+          marginBottom: 12,
+          width: "100%",
+        }}
+        bodyStyle={{
+          fontSize: 15,
+          fontFamily: "Inter_400Regular",
+          color: "#4F4F54",
+          lineHeight: 22,
+          textAlign: "center",
+        }}
+      />
     </View>
   );
 }
 
 function ThirdSlide({ step }) {
   return (
-    <View style={{ flex: 1, width: "100%", alignItems: "center" }}>
+    <View style={{ flex: 1, width: "100%", overflow: "visible" }}>
       <View
         style={{
-          flex: 0.54,
-          width: "100%",
+          position: "absolute",
+          top: -12,
+          left: 0,
+          right: 0,
+          bottom: 0,
           alignItems: "center",
           justifyContent: "flex-start",
         }}
@@ -351,62 +378,46 @@ function ThirdSlide({ step }) {
             width: 540,
             height: 540,
             minHeight: 500,
-            marginTop: -12,
             transform: [{ scale: 1.66 }],
           }}
         />
       </View>
 
-      <View
-        style={{
-          flex: 0.24,
-          width: "100%",
-          alignItems: "center",
-          justifyContent: "flex-start",
-          paddingHorizontal: 16,
-          marginTop: 118,
-          marginBottom: 0,
+      <OnboardingSlideCopy
+        title={step.title}
+        body={step.text}
+        maxWidth={360}
+        titleStyle={{
+          fontSize: 30,
+          color: BLACK,
+          fontFamily: "Georgia",
+          letterSpacing: -1.3,
+          lineHeight: 32,
+          textAlign: "center",
+          marginBottom: 10,
         }}
-      >
-        <Text
-          style={{
-            fontSize: 30,
-            color: BLACK,
-            fontFamily: "Georgia",
-            letterSpacing: -1.3,
-            lineHeight: 32,
-            textAlign: "center",
-            marginBottom: 10,
-            maxWidth: 420,
-          }}
-        >
-          {step.title}
-        </Text>
-
-        <Text
-          style={{
-            fontSize: 15,
-            fontFamily: "Inter_400Regular",
-            color: "#4F4F54",
-            lineHeight: 22,
-            textAlign: "center",
-            maxWidth: 360,
-          }}
-        >
-          {step.text}
-        </Text>
-      </View>
+        bodyStyle={{
+          fontSize: 15,
+          fontFamily: "Inter_400Regular",
+          color: "#4F4F54",
+          lineHeight: 22,
+          textAlign: "center",
+        }}
+      />
     </View>
   );
 }
 
 function FourthSlide({ step }) {
   return (
-    <View style={{ flex: 1, width: "100%", alignItems: "center" }}>
+    <View style={{ flex: 1, width: "100%", overflow: "visible" }}>
       <View
         style={{
-          flex: 0.54,
-          width: "100%",
+          position: "absolute",
+          top: -6,
+          left: 0,
+          right: 0,
+          bottom: 0,
           alignItems: "center",
           justifyContent: "flex-start",
         }}
@@ -418,51 +429,32 @@ function FourthSlide({ step }) {
             width: 540,
             height: 540,
             minHeight: 500,
-            marginTop: -6,
             transform: [{ scale: 1.64 }],
           }}
         />
       </View>
 
-      <View
-        style={{
-          flex: 0.24,
-          width: "100%",
-          alignItems: "center",
-          justifyContent: "flex-start",
-          paddingHorizontal: 16,
-          marginTop: 126,
-          marginBottom: 0,
+      <OnboardingSlideCopy
+        title={step.title}
+        body={step.text}
+        maxWidth={360}
+        titleStyle={{
+          fontSize: 32,
+          color: BLACK,
+          fontFamily: "Georgia",
+          letterSpacing: -1.3,
+          lineHeight: 34,
+          textAlign: "center",
+          marginBottom: 12,
         }}
-      >
-        <Text
-          style={{
-            fontSize: 32,
-            color: BLACK,
-            fontFamily: "Georgia",
-            letterSpacing: -1.3,
-            lineHeight: 34,
-            textAlign: "center",
-            marginBottom: 12,
-            maxWidth: 420,
-          }}
-        >
-          {step.title}
-        </Text>
-
-        <Text
-          style={{
-            fontSize: 15,
-            fontFamily: "Inter_400Regular",
-            color: "#4F4F54",
-            lineHeight: 22,
-            textAlign: "center",
-            maxWidth: 360,
-          }}
-        >
-          {step.text}
-        </Text>
-      </View>
+        bodyStyle={{
+          fontSize: 15,
+          fontFamily: "Inter_400Regular",
+          color: "#4F4F54",
+          lineHeight: 22,
+          textAlign: "center",
+        }}
+      />
     </View>
   );
 }
@@ -489,8 +481,8 @@ export function RecallOnboardingScreen({ initialStep = 0, onComplete }) {
         primaryLabel: "Next",
       },
       {
-        title: "Save Anything",
-        text: "Save recipes, workouts, travel ideas, tutorials, routines, and more.",
+        title: "Save from anywhere",
+        text: "Tap Share, choose Recall, and your video opens ready to save.",
         primaryLabel: "Next",
       },
       {

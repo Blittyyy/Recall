@@ -1,5 +1,6 @@
 import { Pressable, Text, View } from "react-native";
-import { RefreshCw, WifiOff } from "lucide-react-native";
+import { WifiOff } from "lucide-react-native";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
 
 const WHITE = "#FFFFFF";
 const BLACK = "#111111";
@@ -17,7 +18,7 @@ export function RecallSyncState({
     return (
       <View style={[styles.card, style]}>
         <View style={styles.iconWrap}>
-          <RefreshCw size={24} color={BLACK} />
+          <RecallReminderIcon name="rediscovery" size={24} />
         </View>
         <Text style={styles.title}>Loading your library</Text>
         <Text style={styles.text}>

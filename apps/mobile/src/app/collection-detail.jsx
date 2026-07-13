@@ -5,11 +5,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Check,
   ChevronLeft,
-  Pencil,
   Plus,
   Trash2,
   X,
 } from "lucide-react-native";
+import { RecallActionIcon } from "../components/RecallActionIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -20,16 +20,19 @@ import {
 import { useRef, useState } from "react";
 import { useRecallStore } from "../store/useRecallStore";
 import { getSavedWeeksLabel } from "../utils/resurfacing";
+import { getDisplayTitle } from "../utils/titleHelpers";
+import { RemoteThumbnailImage } from "../components/RemoteThumbnailImage";
 import { PlatformIcon } from "../components/AddScreen/PlatformIcon";
 import { RecallSyncState } from "../components/RecallSyncState";
 import { EmptyStateCard } from "../components/EmptyStateCard";
 import { CollectionCoverSection } from "../components/CollectionCoverSection";
+import { RECALL_COLORS } from "../constants/recallTheme";
 
-const BG = "#F7F7F5";
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_MID = "#C7C7CC";
+const BG = RECALL_COLORS.background;
+const WHITE = RECALL_COLORS.surfaceStrong;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.mutedText;
+const GREY_MID = RECALL_COLORS.mid;
 const RED = "#FF3B30";
 
 export default function CollectionDetail() {
@@ -146,14 +149,26 @@ export default function CollectionDetail() {
     <View style={{ flex: 1, backgroundColor: BG }}>
       <View
         style={{
-          paddingTop: insets.top + 12,
+          paddingTop: insets.top + 8,
           paddingHorizontal: 20,
-          paddingBottom: 18,
+          paddingBottom: 8,
         }}
       >
         <View style={styles.navRow}>
           <BackButton onPress={() => router.back()} />
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {!isEditing && collectionVideos.length > 0 ? (
+              <Pressable
+                onPress={openLibraryPicker}
+                style={({ pressed }) => [
+                  styles.addVideoNavButton,
+                  { backgroundColor: pressed ? "#1A1A1A" : BLACK },
+                ]}
+              >
+                <Plus size={15} color={WHITE} />
+                <Text style={styles.addVideoNavButtonText}>Add</Text>
+              </Pressable>
+            ) : null}
             <IconButton
               onPress={() => {
                 setEditName(collection.name);
@@ -161,32 +176,29 @@ export default function CollectionDetail() {
                 setIsEditingName(false);
                 setIsEditing(true);
               }}
-              icon={<Pencil size={17} color={BLACK} />}
+              icon={<RecallActionIcon name="edit" size={18} />}
             />
             <IconButton
               onPress={confirmDelete}
-              icon={<Trash2 size={17} color={RED} />}
+              icon={<Trash2 size={16} color={RED} />}
             />
           </View>
         </View>
+      </View>
 
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: insets.bottom + 32,
+          gap: 10,
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.headerCard}>
-          {coverThumbnailUrl && !isEditing ? (
-            <View style={styles.coverFrame}>
-              <Image
-                source={{ uri: coverThumbnailUrl }}
-                style={styles.coverImage}
-                contentFit="cover"
-              />
-            </View>
-          ) : (
-            <Text style={{ fontSize: 42, marginBottom: 10 }}>
-              {isEditing ? editEmoji : collection.emoji}
-            </Text>
-          )}
-
           {isEditing ? (
-            <View style={{ gap: 14 }}>
+            <View style={{ gap: 12 }}>
               {isEditingName ? (
                 <View style={styles.editRow}>
                   <TextInput
@@ -237,41 +249,31 @@ export default function CollectionDetail() {
               </View>
             </View>
           ) : (
-            <Text style={styles.title}>{collection.name}</Text>
+            <View style={styles.headerSummaryRow}>
+              {coverThumbnailUrl ? (
+                <Image
+                  source={{ uri: coverThumbnailUrl }}
+                  style={styles.coverThumb}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={styles.emojiThumb}>
+                  <Text style={{ fontSize: 26 }}>{collection.emoji}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.title} numberOfLines={2}>
+                  {collection.name}
+                </Text>
+                <Text style={styles.subtitle}>
+                  {collectionVideos.length} video
+                  {collectionVideos.length === 1 ? "" : "s"} saved for later
+                </Text>
+              </View>
+            </View>
           )}
-
-          <Text style={styles.subtitle}>
-            {collectionVideos.length} video
-            {collectionVideos.length === 1 ? "" : "s"} saved for later
-          </Text>
-          <Text style={styles.helperText}>
-            These are things you cared enough to keep close.
-          </Text>
-
-          {!isEditing && collectionVideos.length > 0 ? (
-            <Pressable
-              onPress={openLibraryPicker}
-              style={({ pressed }) => [
-                styles.addVideoButton,
-                { backgroundColor: pressed ? "#1A1A1A" : BLACK },
-              ]}
-            >
-              <Plus size={16} color={WHITE} />
-              <Text style={styles.addVideoButtonText}>Add Video</Text>
-            </Pressable>
-          ) : null}
         </View>
-      </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: 20,
-          paddingBottom: insets.bottom + 32,
-          gap: 12,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
         {collectionVideos.length === 0 ? (
           <EmptyStateCard
             icon={<Text style={{ fontSize: 28 }}>{collection.emoji}</Text>}
@@ -300,7 +302,7 @@ export default function CollectionDetail() {
 function BackButton({ onPress }) {
   return (
     <Pressable onPress={onPress} style={styles.circleButton}>
-      <ChevronLeft size={22} color={BLACK} />
+      <ChevronLeft size={20} color={BLACK} />
     </Pressable>
   );
 }
@@ -322,8 +324,11 @@ function VideoRow({ video, onPress, onRemove }) {
         { backgroundColor: pressed ? "#F0F0EE" : WHITE },
       ]}
     >
-      <Image
-        source={{ uri: video.thumbnailUrl }}
+      <RemoteThumbnailImage
+        thumbnailUrl={video.thumbnailUrl}
+        videoUrl={video.videoUrl}
+        videoId={video.id}
+        platform={video.platform}
         style={{ width: 88, height: 110 }}
         contentFit="cover"
       />
@@ -332,8 +337,8 @@ function VideoRow({ video, onPress, onRemove }) {
           <PlatformIcon platform={video.platform} size={11} />
           <Text style={styles.meta}>{video.platform}</Text>
         </View>
-        <Text style={styles.videoTitle} numberOfLines={2}>
-          {video.title}
+        <Text style={styles.videoTitle}>
+          {getDisplayTitle(video.title)}
         </Text>
         <Text style={styles.meta}>{getSavedWeeksLabel(video.savedAt)}</Text>
       </View>
@@ -349,12 +354,11 @@ const styles = {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 18,
   },
   circleButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: WHITE,
     justifyContent: "center",
     alignItems: "center",
@@ -364,59 +368,58 @@ const styles = {
     shadowRadius: 12,
     elevation: 2,
   },
-  headerCard: {
-    backgroundColor: WHITE,
-    borderRadius: 30,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    elevation: 3,
-  },
-  coverFrame: {
-    height: 176,
-    borderRadius: 22,
-    overflow: "hidden",
-    marginBottom: 18,
-  },
-  coverImage: {
-    width: "100%",
-    height: "100%",
-  },
-  title: {
-    fontSize: 30,
-    fontFamily: "Inter_700Bold",
-    color: BLACK,
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    color: GREY_TEXT,
-  },
-  helperText: {
-    marginTop: 10,
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: GREY_TEXT,
-    lineHeight: 19,
-  },
-  addVideoButton: {
-    alignSelf: "flex-start",
-    marginTop: 18,
-    borderRadius: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
+  addVideoNavButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 5,
+    borderRadius: 19,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
-  addVideoButtonText: {
-    fontSize: 14,
+  addVideoNavButtonText: {
+    fontSize: 13,
     fontFamily: "Inter_600SemiBold",
     color: WHITE,
+  },
+  headerCard: {
+    backgroundColor: WHITE,
+    borderRadius: 20,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  headerSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  coverThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+  },
+  emojiThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "#F7F7F5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  title: {
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+    color: BLACK,
+    letterSpacing: -0.4,
+  },
+  subtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: GREY_TEXT,
   },
   editRow: {
     flexDirection: "row",

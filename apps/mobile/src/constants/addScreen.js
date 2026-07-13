@@ -1,9 +1,11 @@
-export const WHITE = "#FFFFFF";
-export const BLACK = "#000000";
-export const BG = "#FAFAFA";
-export const GREY_TEXT = "#8E8E93";
-export const GREY_LIGHT = "#F2F2F7";
-export const GREY_MID = "#C7C7CC";
+import { RECALL_COLORS } from "./recallTheme";
+
+export const WHITE = RECALL_COLORS.surface;
+export const BLACK = RECALL_COLORS.text;
+export const BG = RECALL_COLORS.background;
+export const GREY_TEXT = RECALL_COLORS.secondaryText;
+export const GREY_LIGHT = RECALL_COLORS.subtle;
+export const GREY_MID = RECALL_COLORS.mid;
 export const GREEN = "#34C759";
 export const RED = "#FF3B30";
 

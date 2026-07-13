@@ -2,6 +2,8 @@ import { View, Text, Animated } from "react-native";
 import { Image } from "expo-image";
 import { PlatformIcon } from "./PlatformIcon";
 import { getCategoryMeta } from "../../utils/resurfacing";
+import { getDisplayTitle } from "../../utils/titleHelpers";
+import { createThumbnailImageSource } from "../../utils/thumbnailImageSource";
 import { WHITE, BLACK, GREY_TEXT } from "../../constants/addScreen";
 
 const PLATFORM_DISPLAY = {
@@ -25,7 +27,10 @@ export function VideoPreviewCard({
   const platformLabel = PLATFORM_DISPLAY[detectedPlatform] ?? detectedPlatform;
   const thumbnail = customThumbnail ?? catMeta.thumbnail;
   const fallbackTitle = `${catMeta.emoji}  Saved ${platformLabel} ${catMeta.label} video`;
-  const title = previewTitle?.trim() || fallbackTitle;
+  const title = getDisplayTitle(
+    previewTitle?.trim() || fallbackTitle,
+    fallbackTitle,
+  );
   const creator = previewCreator?.trim() || "Unknown creator";
 
   const helperText =
@@ -72,7 +77,7 @@ export function VideoPreviewCard({
       >
         <View style={{ position: "relative" }}>
           <Image
-            source={{ uri: thumbnail }}
+            source={createThumbnailImageSource(thumbnail, detectedPlatform)}
             style={{ width: "100%", aspectRatio: 4 / 5 }}
             contentFit="cover"
           />

@@ -7,6 +7,8 @@ const FOLLOW_UP_NOTIFICATION_MAP_KEY =
   "recall-reminder-follow-up-notification-map";
 const NOTIFICATION_PREFERENCES_KEY = "recall-notification-preferences";
 const FOLLOW_UP_PREFERENCES_KEY = "recall-reminder-follow-up-preferences";
+const ONCE_REMINDER_COMPLETED_MAP_KEY = "recall-once-reminder-completed-map";
+const ONCE_REMINDER_SCHEDULE_MAP_KEY = "recall-once-reminder-schedule-map";
 const REMINDER_CHANNEL_ID = "recall-reminders";
 const FOLLOW_UP_FALLBACK_COPY = "You saved this for later.";
 let hasInitializedNotificationHandler = false;
@@ -287,6 +289,97 @@ async function writeFollowUpPreferenceMap(map) {
   await writeJsonMap(FOLLOW_UP_PREFERENCES_KEY, map);
 }
 
+async function readOnceReminderCompletedMap() {
+  return readJsonMap(ONCE_REMINDER_COMPLETED_MAP_KEY);
+}
+
+async function writeOnceReminderCompletedMap(map) {
+  await writeJsonMap(ONCE_REMINDER_COMPLETED_MAP_KEY, map);
+}
+
+async function readOnceReminderScheduleMap() {
+  return readJsonMap(ONCE_REMINDER_SCHEDULE_MAP_KEY);
+}
+
+async function writeOnceReminderScheduleMap(map) {
+  await writeJsonMap(ONCE_REMINDER_SCHEDULE_MAP_KEY, map);
+}
+
+export async function getOnceReminderCompletedMap() {
+  return readOnceReminderCompletedMap();
+}
+
+export async function getOnceReminderScheduleMap() {
+  return readOnceReminderScheduleMap();
+}
+
+export async function isOnceReminderCompleted(videoId) {
+  if (!videoId) return false;
+  const map = await readOnceReminderCompletedMap();
+  return Boolean(map[videoId]);
+}
+
+export async function markOnceReminderCompleted(videoId) {
+  if (!videoId) return null;
+
+  const completedAt = new Date().toISOString();
+  const map = await readOnceReminderCompletedMap();
+  map[videoId] = completedAt;
+  await writeOnceReminderCompletedMap(map);
+
+  const scheduleMap = await readOnceReminderScheduleMap();
+  delete scheduleMap[videoId];
+  await writeOnceReminderScheduleMap(scheduleMap);
+
+  return completedAt;
+}
+
+export async function clearOnceReminderCompleted(videoId) {
+  if (!videoId) return;
+
+  const completedMap = await readOnceReminderCompletedMap();
+  delete completedMap[videoId];
+  await writeOnceReminderCompletedMap(completedMap);
+
+  const scheduleMap = await readOnceReminderScheduleMap();
+  delete scheduleMap[videoId];
+  await writeOnceReminderScheduleMap(scheduleMap);
+}
+
+async function setOnceReminderScheduledFireAt(videoId, fireAt) {
+  if (!videoId || !fireAt) return;
+
+  const scheduleMap = await readOnceReminderScheduleMap();
+  scheduleMap[videoId] = fireAt.toISOString();
+  await writeOnceReminderScheduleMap(scheduleMap);
+}
+
+async function completeOnceReminderIfPastDue(video, now = new Date()) {
+  if (!video?.id || video.reminderFrequency !== "Once") {
+    return null;
+  }
+
+  if (await isOnceReminderCompleted(video.id)) {
+    return video.onceReminderCompletedAt ?? null;
+  }
+
+  const scheduleMap = await readOnceReminderScheduleMap();
+  const fireAtIso = scheduleMap[video.id];
+  if (!fireAtIso) {
+    return null;
+  }
+
+  if (new Date(fireAtIso).getTime() > now.getTime()) {
+    return null;
+  }
+
+  return markOnceReminderCompleted(video.id);
+}
+
+export async function syncOnceReminderCompletionState(video, now = new Date()) {
+  return completeOnceReminderIfPastDue(video, now);
+}
+
 export async function getNotificationPreferences() {
   const raw = await AsyncStorage.getItem(NOTIFICATION_PREFERENCES_KEY);
   if (!raw) {
@@ -329,6 +422,11 @@ export async function getNotificationPermissionStatus() {
 export async function requestNotificationPermission() {
   if (!notificationsSupported()) {
     return "unavailable";
+  }
+
+  const currentStatus = await getNotificationPermissionStatus();
+  if (currentStatus !== "undetermined") {
+    return currentStatus;
   }
 
   const settings = await Notifications.requestPermissionsAsync();
@@ -667,7 +765,20 @@ export async function syncReminderNotificationForVideo(
     video.reminderFollowUpDelayMinutes,
   );
 
+  const frequency = video.reminderFrequency ?? "Daily";
   const now = new Date();
+
+  if (frequency === "Once") {
+    if (video.onceReminderCompletedAt || (await isOnceReminderCompleted(video.id))) {
+      return { scheduled: false, reason: "once-completed" };
+    }
+
+    const completedAt = await completeOnceReminderIfPastDue(video, now);
+    if (completedAt) {
+      return { scheduled: false, reason: "once-completed", completedAt };
+    }
+  }
+
   const scheduleEntries = buildReminderScheduleEntries(video, now);
   logNotificationDebug("syncReminderNotificationForVideo start", {
     reminderId: video.reminderId ?? null,
@@ -707,6 +818,7 @@ export async function syncReminderNotificationForVideo(
       const identifier = await Notifications.scheduleNotificationAsync({
         content: getReminderNotificationContent(video, {
           type: "reminder",
+          reminderFrequency: frequency,
         }),
         trigger: entry.trigger,
       });
@@ -756,6 +868,14 @@ export async function syncReminderNotificationForVideo(
   const map = await readScheduledNotificationMap();
   map[video.id] = identifiers;
   await writeScheduledNotificationMap(map);
+
+  if (frequency === "Once") {
+    const onceFireAt = scheduleEntries[0]?.nextOccurrence;
+    if (onceFireAt) {
+      await setOnceReminderScheduledFireAt(video.id, onceFireAt);
+    }
+  }
+
   logNotificationDebug("reminder identifiers stored", {
     reminderId: video.reminderId ?? null,
     videoId: video.id,
@@ -837,13 +957,28 @@ export async function resyncReminderNotifications(
   }
 }
 
-export function getNotificationVideoIdFromResponse(response) {
+function getNotificationDataFromEvent(event) {
   return (
-    response?.notification?.request?.content?.data?.videoId ??
+    event?.notification?.request?.content?.data ??
+    event?.request?.content?.data ??
     null
   );
 }
 
+export function getNotificationVideoIdFromResponse(response) {
+  return getNotificationDataFromEvent(response)?.videoId ?? null;
+}
+
 export function getNotificationTypeFromResponse(response) {
-  return response?.notification?.request?.content?.data?.type ?? null;
+  return getNotificationDataFromEvent(response)?.type ?? null;
+}
+
+export function getNotificationReminderFrequencyFromResponse(response) {
+  return getNotificationDataFromEvent(response)?.reminderFrequency ?? null;
+}
+
+export function isOnceReminderNotificationResponse(response) {
+  const type = getNotificationTypeFromResponse(response);
+  const frequency = getNotificationReminderFrequencyFromResponse(response);
+  return type === "reminder" && frequency === "Once";
 }

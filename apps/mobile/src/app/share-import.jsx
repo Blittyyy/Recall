@@ -13,12 +13,11 @@ import {
   Instagram,
   Youtube,
   CheckCircle2,
-  Sparkles,
   Clock,
-  RefreshCw,
   ChevronRight,
   ArrowLeft,
 } from "lucide-react-native";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -29,6 +28,7 @@ import {
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { TikTokIcon } from "../components/AddScreen/TikTokIcon";
+import { getDisplayTitle } from "../utils/titleHelpers";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const WHITE = "#FFFFFF";
@@ -474,9 +474,8 @@ function SetupView({ video, insets, opacity, translateY, onSave }) {
                 marginBottom: 3,
                 lineHeight: 21,
               }}
-              numberOfLines={2}
             >
-              {video.title}
+              {getDisplayTitle(video.title)}
             </Text>
             <Text
               style={{
@@ -510,7 +509,7 @@ function SetupView({ video, insets, opacity, translateY, onSave }) {
               alignItems: "center",
             }}
           >
-            <RefreshCw size={13} color={GREY_TEXT} />
+            <RecallReminderIcon name="rediscovery" size={13} />
           </View>
           <Text
             style={{
@@ -649,7 +648,7 @@ function SetupView({ video, insets, opacity, translateY, onSave }) {
               marginBottom: 6,
             })}
           >
-            <Sparkles size={17} color={WHITE} />
+            <RecallReminderIcon name="sparkles" size={17} />
             <Text
               style={{
                 fontSize: 17,
@@ -834,7 +833,7 @@ function SuccessView({ video, insets, opacity, translateY, onDone }) {
           }}
         >
           <Text style={{ fontFamily: "Inter_600SemiBold", color: BLACK }}>
-            {video.title.split(" ").slice(0, 4).join(" ")}…
+            {getDisplayTitle(video.title)}
           </Text>
           {"\n"}will remind you every day at 7:00 AM.
         </Text>
@@ -884,9 +883,8 @@ function SuccessView({ video, insets, opacity, translateY, onDone }) {
                 fontFamily: "Inter_600SemiBold",
                 color: BLACK,
               }}
-              numberOfLines={1}
             >
-              {video.title}
+              {getDisplayTitle(video.title)}
             </Text>
             <Text
               style={{

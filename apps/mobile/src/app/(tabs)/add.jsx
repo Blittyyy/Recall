@@ -1,7 +1,9 @@
 import { View, Text, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
-import { Sparkles, Tag, FolderPlus } from "lucide-react-native";
+import { RecallActionIcon } from "../../components/RecallActionIcon";
+import { RecallReminderIcon } from "../../components/RecallReminderIcon";
+import { RecallSavedContentIcon } from "../../components/RecallSavedContentIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -21,6 +23,7 @@ import { ReminderSection } from "../../components/AddScreen/ReminderSection";
 import { SaveButton } from "../../components/AddScreen/SaveButton";
 import { NewCollectionModal } from "../../components/AddScreen/NewCollectionModal";
 import { SuccessOverlay } from "../../components/AddScreen/SuccessOverlay";
+import { SaveSuccessFlight } from "../../components/AddScreen/SaveSuccessFlight";
 import { ReminderSetupModal } from "../../components/ReminderSetupModal";
 import { useAddScreenState } from "../../hooks/useAddScreenState";
 import { BG, BLACK, GREY_TEXT, GREY_MID } from "../../constants/addScreen";
@@ -69,6 +72,7 @@ export default function AddScreen() {
     shouldShowMetadataInputs,
     showSuccess,
     successMode,
+    saveSuccessAnimation,
     savedHasReminder,
     savedVideoId,
     previewAnim,
@@ -96,8 +100,11 @@ export default function AddScreen() {
     handleSave,
     handleSaveAnother,
     handleViewLibrary,
+    handleDone,
     dismissSuccess,
     reopenSuccess,
+    completeSaveSuccessAnimation,
+    triggerSaveSuccessHaptic,
   } = useAddScreenState(prefillUrl ?? null);
 
   if (!fontsLoaded) return null;
@@ -107,26 +114,27 @@ export default function AddScreen() {
       <View style={{ flex: 1, backgroundColor: BG }}>
         <View
           style={{
-            paddingTop: insets.top + 16,
+            paddingTop: insets.top + 24,
             paddingHorizontal: 20,
-            paddingBottom: 18,
+            paddingBottom: 24,
             backgroundColor: BG,
           }}
         >
           <Text
             style={{
-              fontSize: 28,
-              fontFamily: "Inter_700Bold",
+              fontSize: 40,
+              lineHeight: 46,
+              fontFamily: "Georgia",
               color: BLACK,
-              letterSpacing: -0.8,
-              marginBottom: 6,
+              letterSpacing: -1.2,
+              marginBottom: 10,
             }}
           >
             Save a Video
           </Text>
           <Text
             style={{
-              fontSize: 14,
+              fontSize: 15,
               fontFamily: "Inter_400Regular",
               color: GREY_TEXT,
               lineHeight: 20,
@@ -138,7 +146,7 @@ export default function AddScreen() {
 
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 140 }}
+          contentContainerStyle={{ paddingBottom: 152 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -158,14 +166,14 @@ export default function AddScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                marginBottom: 24,
+                marginBottom: 28,
                 gap: 6,
               }}
             >
-              <Sparkles size={13} color={GREY_MID} />
+              <RecallReminderIcon name="sparkles" size={13} />
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   fontFamily: "Inter_400Regular",
                   color: GREY_MID,
                 }}
@@ -197,7 +205,7 @@ export default function AddScreen() {
           ) : null}
 
           <SectionBlock
-            icon={<Tag size={16} color="#FF9500" />}
+            icon={<RecallActionIcon name="tag" size={17} />}
             label="Category"
           >
             <CategorySelector
@@ -210,7 +218,7 @@ export default function AddScreen() {
 
           {collections.length > 0 ? (
             <SectionBlock
-              icon={<FolderPlus size={16} color="#6741D9" />}
+              icon={<RecallSavedContentIcon name="folder-plus" size={17} />}
               label="Add to Collection"
             >
               <CollectionPicker
@@ -244,6 +252,15 @@ export default function AddScreen() {
           insets={insets}
         />
 
+        <SaveSuccessFlight
+          visible={!!saveSuccessAnimation}
+          thumbnailUrl={saveSuccessAnimation?.thumbnailUrl}
+          title={saveSuccessAnimation?.title}
+          insets={insets}
+          onHaptic={triggerSaveSuccessHaptic}
+          onFinish={completeSaveSuccessAnimation}
+        />
+
         <SuccessOverlay
           visible={showSuccess}
           mode={successMode}
@@ -254,6 +271,7 @@ export default function AddScreen() {
             setShowReminderSetup(true);
           }}
           onSaveAnother={handleSaveAnother}
+          onDone={handleDone}
         />
 
       <NewCollectionModal

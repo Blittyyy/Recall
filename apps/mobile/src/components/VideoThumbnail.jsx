@@ -1,9 +1,10 @@
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { PlatformIcon } from "./AddScreen/PlatformIcon";
-
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
+import { useThumbnailImageSource } from "../hooks/useThumbnailImageSource";
+import { getThumbnailFallbackUrls } from "../utils/thumbnailImageSource";
+import { isVideoUnavailable } from "../utils/videoAvailability";
+import { useRecallStore } from "../store/useRecallStore";
 
 function getVariantStyle(variant, platform) {
   const normalizedPlatform = (platform ?? "").toLowerCase();
@@ -25,6 +26,13 @@ function getVariantStyle(variant, platform) {
     };
   }
 
+  if (variant === "homeRecent") {
+    return {
+      width: "100%",
+      height: "100%",
+    };
+  }
+
   return {
     width: 112,
     height: 96,
@@ -34,21 +42,46 @@ function getVariantStyle(variant, platform) {
 
 export function VideoThumbnail({
   thumbnailUrl,
+  videoUrl,
+  videoId,
   platform,
   variant = "libraryList",
   showPlatformBadge = true,
+  style,
+  imageStyle,
   children,
 }) {
   const frameStyle = getVariantStyle(variant, platform);
+  const availabilityStatus = useRecallStore((state) => {
+    if (!videoId) {
+      return null;
+    }
+
+    return state.videos.find((video) => video.id === videoId)?.availabilityStatus ?? null;
+  });
+  const showUnavailableBadge = isVideoUnavailable(availabilityStatus);
+  const { source, onError } = useThumbnailImageSource({
+    thumbnailUrl,
+    videoUrl,
+    platform,
+    videoId,
+  });
+  const hasThumbnailUrl = getThumbnailFallbackUrls(thumbnailUrl, platform).length > 0;
   const badgeSize = variant === "detailHero" ? 14 : 11;
   const badgePaddingHorizontal = variant === "detailHero" ? 11 : 6;
   const badgePaddingVertical = variant === "detailHero" ? 7 : 4;
   const badgeOffset = variant === "detailHero" ? 14 : 8;
+  const resolvedImageStyle = [
+    { width: "100%", height: "100%" },
+    variant === "detailHero" ? { transform: [{ scale: 1.12 }] } : null,
+    imageStyle,
+  ].filter(Boolean);
 
   return (
     <View
       style={[
         frameStyle,
+        style,
         {
           position: "relative",
           overflow: "hidden",
@@ -56,11 +89,14 @@ export function VideoThumbnail({
         },
       ]}
     >
-      {thumbnailUrl ? (
+      {source ? (
         <Image
-          source={{ uri: thumbnailUrl }}
-          style={{ width: "100%", height: "100%" }}
+          source={source}
+          style={resolvedImageStyle}
           contentFit="cover"
+          contentPosition="center"
+          cachePolicy="none"
+          onError={onError}
         />
       ) : null}
 
@@ -68,9 +104,7 @@ export function VideoThumbnail({
         style={{
           position: "absolute",
           inset: 0,
-          backgroundColor: thumbnailUrl
-            ? "rgba(0,0,0,0.08)"
-            : "rgba(0,0,0,0.02)",
+          backgroundColor: source ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.02)",
         }}
       />
 
@@ -90,7 +124,39 @@ export function VideoThumbnail({
         </View>
       ) : null}
 
-      {!thumbnailUrl ? (
+      {showUnavailableBadge ? (
+        <View
+          style={{
+            position: "absolute",
+            left: badgeOffset,
+            right: badgeOffset,
+            bottom: badgeOffset,
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "rgba(18,18,18,0.82)",
+              borderRadius: variant === "detailHero" ? 14 : 10,
+              paddingHorizontal: variant === "detailHero" ? 12 : 8,
+              paddingVertical: variant === "detailHero" ? 7 : 5,
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: variant === "detailHero" ? 12 : 10,
+                fontWeight: "600",
+                textAlign: "center",
+              }}
+            >
+              Video unavailable
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {!hasThumbnailUrl ? (
         <View
           style={{
             position: "absolute",

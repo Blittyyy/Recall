@@ -1,5 +1,6 @@
 import { View, Text, TextInput } from "react-native";
-import { Type, UserRound } from "lucide-react-native";
+import { Type } from "lucide-react-native";
+import { RecallProfileIcon } from "../RecallProfileIcon";
 import {
   BLACK,
   GREY_LIGHT,
@@ -116,7 +117,7 @@ export function MetadataInputSection({
       />
 
       <MetadataField
-        icon={<UserRound size={14} color={GREY_MID} />}
+        icon={<RecallProfileIcon name="user" size={14} />}
         label="Creator"
         value={creator}
         onChangeText={onChangeCreator}

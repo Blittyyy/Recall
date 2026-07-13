@@ -2,7 +2,9 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Animated } from "react-native";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import { useRecallStore } from "../store/useRecallStore";
+import { useAppearanceStore } from "../store/useAppearanceStore";
 import { fetchVideoMetadata } from "../services/videoMetadataService";
 import { createMockVideo, getCategoryMeta } from "../utils/resurfacing";
 import {
@@ -23,6 +25,7 @@ export function useAddScreenState(prefillUrl = null) {
   const addVideo = useRecallStore((s) => s.addVideo);
   const collections = useRecallStore((s) => s.collections);
   const addCollection = useRecallStore((s) => s.addCollection);
+  const reduceMotion = useAppearanceStore((s) => s.reduceMotion);
 
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState(null);
@@ -47,6 +50,7 @@ export function useAddScreenState(prefillUrl = null) {
   const [saveState, setSaveState] = useState("idle");
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMode, setSuccessMode] = useState("saved");
+  const [saveSuccessAnimation, setSaveSuccessAnimation] = useState(null);
   const [savedPlatform, setSavedPlatform] = useState(null);
   const [savedCategory, setSavedCategory] = useState("fitness");
   const [savedHasReminder, setSavedHasReminder] = useState(false);
@@ -61,6 +65,7 @@ export function useAddScreenState(prefillUrl = null) {
   const errorShake = useRef(new Animated.Value(0)).current;
   const lastAppliedPrefillUrl = useRef(null);
   const metadataCacheRef = useRef(new Map());
+  const saveSuccessFallbackRef = useRef(null);
   const metadataRequestRef = useRef({
     key: null,
     promise: null,
@@ -338,10 +343,62 @@ export function useAddScreenState(prefillUrl = null) {
     setSavedVideoId(null);
   }, []);
 
+  const clearSaveSuccessFallback = useCallback(() => {
+    if (saveSuccessFallbackRef.current) {
+      clearTimeout(saveSuccessFallbackRef.current);
+      saveSuccessFallbackRef.current = null;
+    }
+  }, []);
+
+  const completeSaveSuccessAnimation = useCallback(() => {
+    clearSaveSuccessFallback();
+    setSaveSuccessAnimation(null);
+    setShowSuccess(true);
+  }, [clearSaveSuccessFallback]);
+
+  const triggerSaveSuccessHaptic = useCallback(() => {
+    Haptics.notificationAsync(
+      Haptics.NotificationFeedbackType.Success,
+    ).catch(() => null);
+  }, []);
+
+  const startSaveSuccessAnimation = useCallback(
+    (payload) => {
+      clearSaveSuccessFallback();
+
+      if (reduceMotion) {
+        triggerSaveSuccessHaptic();
+        setSaveSuccessAnimation(null);
+        setShowSuccess(true);
+        return;
+      }
+
+      setSaveSuccessAnimation({
+        ...payload,
+        nonce: Date.now(),
+      });
+      saveSuccessFallbackRef.current = setTimeout(() => {
+        setSaveSuccessAnimation(null);
+        setShowSuccess(true);
+        saveSuccessFallbackRef.current = null;
+      }, 680);
+    },
+    [clearSaveSuccessFallback, reduceMotion, triggerSaveSuccessHaptic],
+  );
+
+  useEffect(
+    () => () => {
+      clearSaveSuccessFallback();
+    },
+    [clearSaveSuccessFallback],
+  );
+
   const dismissSuccess = useCallback(() => {
+    clearSaveSuccessFallback();
+    setSaveSuccessAnimation(null);
     setShowSuccess(false);
     setSaveState("idle");
-  }, []);
+  }, [clearSaveSuccessFallback]);
 
   const reopenSuccess = useCallback(() => {
     setShowSuccess(true);
@@ -366,6 +423,13 @@ export function useAddScreenState(prefillUrl = null) {
       params: { highlight },
     });
   }, [clearSavedState, dismissSuccess, resetForm, router, savedVideoId]);
+
+  const handleDone = useCallback(() => {
+    dismissSuccess();
+    clearSavedState();
+    resetForm();
+    router.push("/(tabs)");
+  }, [clearSavedState, dismissSuccess, resetForm, router]);
 
   const handleSave = useCallback(async () => {
     if (!url.trim()) {
@@ -429,18 +493,22 @@ export function useAddScreenState(prefillUrl = null) {
     });
 
     setSaveState("saving");
-    Animated.sequence([
-      Animated.timing(saveAnim, {
-        toValue: 0.94,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(saveAnim, {
-        toValue: 1,
-        duration: 160,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    if (reduceMotion) {
+      saveAnim.setValue(1);
+    } else {
+      Animated.sequence([
+        Animated.timing(saveAnim, {
+          toValue: 0.98,
+          duration: 80,
+          useNativeDriver: true,
+        }),
+        Animated.timing(saveAnim, {
+          toValue: 1,
+          duration: 140,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
 
     const savedVideo = await addVideo(video);
     if (savedVideo?.blockedByPaywall) {
@@ -460,7 +528,11 @@ export function useAddScreenState(prefillUrl = null) {
       setSavedHasReminder(false);
       setSavedVideoId(savedVideo.id);
       setSaveState("saved");
-      setShowSuccess(true);
+      startSaveSuccessAnimation({
+        thumbnailUrl: resolvedThumbnailUrl,
+        title: resolvedTitle,
+        platform,
+      });
       return;
     }
 
@@ -470,7 +542,11 @@ export function useAddScreenState(prefillUrl = null) {
     setSavedHasReminder(reminderEnabled);
     setSavedVideoId(savedVideo.id);
     setSaveState("saved");
-    setShowSuccess(true);
+    startSaveSuccessAnimation({
+      thumbnailUrl: savedVideo.thumbnailUrl ?? resolvedThumbnailUrl,
+      title: savedVideo.title ?? resolvedTitle,
+      platform,
+    });
   }, [
     addVideo,
     customCategoryName,
@@ -478,6 +554,7 @@ export function useAddScreenState(prefillUrl = null) {
     customTitle,
     loadMetadataForUrl,
     metadataStatus,
+    reduceMotion,
     reminderEnabled,
     saveAnim,
     selectedCategory,
@@ -487,6 +564,7 @@ export function useAddScreenState(prefillUrl = null) {
     selectedReminderDays,
     selectedTime,
     shakeError,
+    startSaveSuccessAnimation,
     url,
     videoMetadata,
   ]);
@@ -544,6 +622,7 @@ export function useAddScreenState(prefillUrl = null) {
     shouldShowMetadataInputs,
     showSuccess,
     successMode,
+    saveSuccessAnimation,
     savedPlatform,
     savedCategory,
     savedHasReminder,
@@ -573,8 +652,11 @@ export function useAddScreenState(prefillUrl = null) {
     handleSave,
     handleSaveAnother,
     handleViewLibrary,
+    handleDone,
     dismissSuccess,
     reopenSuccess,
+    completeSaveSuccessAnimation,
+    triggerSaveSuccessHaptic,
     resetForm,
   };
 }

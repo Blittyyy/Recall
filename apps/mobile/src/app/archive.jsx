@@ -1,7 +1,9 @@
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Archive, ChevronLeft, RotateCcw, Trash2 } from "lucide-react-native";
+import { ChevronLeft, Trash2 } from "lucide-react-native";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
+import { RecallSavedContentIcon } from "../components/RecallSavedContentIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -11,15 +13,16 @@ import {
 } from "@expo-google-fonts/dev";
 import { useMemo } from "react";
 import { useRecallStore } from "../store/useRecallStore";
-import { EmptyStateCard } from "../components/EmptyStateCard";
 import { VideoThumbnail } from "../components/VideoThumbnail";
 import { getCategoryMeta, getSavedTimeLabel } from "../utils/resurfacing";
+import { getDisplayTitle } from "../utils/titleHelpers";
+import { RECALL_COLORS } from "../constants/recallTheme";
 
-const BG = "#F8F8F8";
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F7";
+const BG = RECALL_COLORS.background;
+const WHITE = RECALL_COLORS.surfaceStrong;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.mutedText;
+const GREY_LIGHT = RECALL_COLORS.subtleStrong;
 const RED = "#FF3B30";
 
 function BackButton({ onPress }) {
@@ -61,6 +64,8 @@ function ArchivedVideoCard({ video, onOpen, onRestore, onDelete }) {
       <View style={{ flexDirection: "row", gap: 14 }}>
         <VideoThumbnail
           thumbnailUrl={video.thumbnailUrl}
+          videoUrl={video.videoUrl}
+          videoId={video.id}
           platform={video.platform}
           variant="libraryList"
         />
@@ -74,9 +79,8 @@ function ArchivedVideoCard({ video, onOpen, onRestore, onDelete }) {
                 lineHeight: 22,
                 letterSpacing: -0.35,
               }}
-              numberOfLines={2}
             >
-              {video.title}
+              {getDisplayTitle(video.title)}
             </Text>
             <Text
               style={{
@@ -142,7 +146,7 @@ function ArchivedVideoCard({ video, onOpen, onRestore, onDelete }) {
                 backgroundColor: pressed ? "#1F1F1F" : BLACK,
               })}
             >
-              <RotateCcw size={14} color={WHITE} />
+              <RecallReminderIcon name="rediscovery" size={14} />
               <Text
                 style={{
                   fontSize: 13,
@@ -268,11 +272,64 @@ export default function ArchiveScreen() {
         </View>
 
         {archivedVideos.length === 0 ? (
-          <EmptyStateCard
-            icon={<Archive size={26} color={BLACK} />}
-            title="Nothing archived"
-            text="Videos you archive will appear here."
-          />
+          <View
+            style={{
+              marginTop: 8,
+              paddingTop: 34,
+              paddingBottom: 32,
+              paddingHorizontal: 28,
+              borderRadius: 26,
+              borderWidth: 1,
+              borderColor: RECALL_COLORS.border,
+              backgroundColor: RECALL_COLORS.surface,
+              alignItems: "center",
+              shadowColor: "#8C7967",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.07,
+              shadowRadius: 18,
+              elevation: 2,
+            }}
+          >
+            <View
+              style={{
+                width: 74,
+                height: 74,
+                borderRadius: 24,
+                backgroundColor: "#F5EFE7",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 22,
+              }}
+            >
+              <RecallSavedContentIcon name="archive" size={28} />
+            </View>
+
+            <Text
+              style={{
+                fontFamily: "Inter_600SemiBold",
+                fontSize: 21,
+                lineHeight: 27,
+                color: "#26221E",
+                textAlign: "center",
+              }}
+            >
+              Nothing tucked away yet.
+            </Text>
+
+            <Text
+              style={{
+                marginTop: 9,
+                maxWidth: 270,
+                fontFamily: "Inter_400Regular",
+                fontSize: 14,
+                lineHeight: 21,
+                color: "#8A837C",
+                textAlign: "center",
+              }}
+            >
+              Videos you step away from can live here.
+            </Text>
+          </View>
         ) : (
           archivedVideos.map((video) => (
             <ArchivedVideoCard

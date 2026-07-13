@@ -1,35 +1,63 @@
 import { Tabs } from "expo-router";
-import { Home, Library, Plus, Bell, User } from "lucide-react-native";
-import { Platform, View } from "react-native";
+import { Image, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRecallTheme } from "../../constants/recallTheme";
 
-function AddTabIcon() {
+const NAV_ICONS = {
+  home: require("../../../assets/icons/navigation/nav-home.png"),
+  library: require("../../../assets/icons/navigation/nav-library.png"),
+  plus: require("../../../assets/icons/navigation/nav-plus.png"),
+  reminders: require("../../../assets/icons/navigation/nav-reminders.png"),
+  profile: require("../../../assets/icons/navigation/nav-profile.png"),
+};
+
+function NavigationIcon({ source, focused }) {
+  return (
+    <Image
+      source={source}
+      resizeMode="contain"
+      style={{
+        width: 27,
+        height: 27,
+        opacity: focused ? 1 : 0.58,
+      }}
+    />
+  );
+}
+
+function AddTabIcon({ colors }) {
   return (
     <View
       style={{
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: "#000000",
+        backgroundColor: colors.background,
         justifyContent: "center",
         alignItems: "center",
+        alignSelf: "center",
         marginTop: -24,
-        borderWidth: 3,
-        borderColor: "#F7F7F5",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.18,
-        shadowRadius: 18,
-        elevation: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 14,
+        elevation: 6,
       }}
     >
-      <Plus size={24} color="#FFFFFF" strokeWidth={2.5} />
+      <Image
+        source={NAV_ICONS.plus}
+        resizeMode="contain"
+        style={{ width: 34, height: 34 }}
+      />
     </View>
   );
 }
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const colors = useRecallTheme();
   const isWeb = Platform.OS === "web";
   const tabBarBottomPadding = Math.max(insets.bottom, isWeb ? 14 : 16);
   const tabBarHeight = 58 + tabBarBottomPadding + (isWeb ? 8 : 10);
@@ -40,9 +68,9 @@ export default function TabLayout() {
         headerShown: false,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
-          borderTopColor: "#ECEAE4",
+          borderTopColor: colors.border,
           height: tabBarHeight,
           paddingBottom: tabBarBottomPadding,
           paddingTop: isWeb ? 10 : 8,
@@ -52,8 +80,8 @@ export default function TabLayout() {
           shadowRadius: 16,
           elevation: 10,
         },
-        tabBarActiveTintColor: "#000000",
-        tabBarInactiveTintColor: "#8E8E93",
+        tabBarActiveTintColor: colors.text,
+        tabBarInactiveTintColor: colors.mutedText,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "600",
@@ -70,13 +98,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, focused }) => (
-            <Home
-              size={23}
-              color={color}
-              fill={focused ? "#000000" : "transparent"}
-              strokeWidth={focused ? 2 : 1.8}
-            />
+          tabBarIcon: ({ focused }) => (
+            <NavigationIcon source={NAV_ICONS.home} focused={focused} />
           ),
         }}
       />
@@ -84,13 +107,8 @@ export default function TabLayout() {
         name="saved"
         options={{
           title: "Library",
-          tabBarIcon: ({ color, focused }) => (
-            <Library
-              size={23}
-              color={color}
-              fill={focused ? "#000000" : "transparent"}
-              strokeWidth={focused ? 2 : 1.8}
-            />
+          tabBarIcon: ({ focused }) => (
+            <NavigationIcon source={NAV_ICONS.library} focused={focused} />
           ),
         }}
       />
@@ -98,21 +116,17 @@ export default function TabLayout() {
         name="add"
         options={{
           title: "",
-          tabBarIcon: () => <AddTabIcon />,
+          tabBarIcon: () => <AddTabIcon colors={colors} />,
           tabBarLabel: () => null,
+          tabBarIconStyle: { marginTop: 0 },
         }}
       />
       <Tabs.Screen
         name="calendar"
         options={{
           title: "Reminders",
-          tabBarIcon: ({ color, focused }) => (
-            <Bell
-              size={23}
-              color={color}
-              fill={focused ? "#000000" : "transparent"}
-              strokeWidth={focused ? 2 : 1.8}
-            />
+          tabBarIcon: ({ focused }) => (
+            <NavigationIcon source={NAV_ICONS.reminders} focused={focused} />
           ),
         }}
       />
@@ -120,13 +134,8 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, focused }) => (
-            <User
-              size={23}
-              color={color}
-              fill={focused ? "#000000" : "transparent"}
-              strokeWidth={focused ? 2 : 1.8}
-            />
+          tabBarIcon: ({ focused }) => (
+            <NavigationIcon source={NAV_ICONS.profile} focused={focused} />
           ),
         }}
       />

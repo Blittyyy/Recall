@@ -12,6 +12,7 @@ import {
 } from "../services/supabaseClient";
 import { RecallAuthScreen } from "../components/RecallAuthScreen";
 import { RecallOnboardingScreen } from "../components/RecallOnboardingScreen";
+import { RecallWhatsNextScreen } from "../components/RecallWhatsNextScreen";
 import { RecallPaywallModal } from "../components/RecallPaywallModal";
 import { AppViewportFrame } from "../components/AppViewportFrame";
 import {
@@ -21,21 +22,44 @@ import {
   setRecallGuestOnboardingComplete,
   setRecallHasAuthenticated,
   setRecallOnboardingComplete,
+  setRecallWhatsNextComplete,
+  shouldShowRecallWhatsNext,
 } from "../services/onboardingService";
 import {
   cancelAllReminderNotifications,
   cancelFollowUpReminderNotificationsForVideo,
   getNotificationVideoIdFromResponse,
   initializeRecallNotifications,
+  isOnceReminderNotificationResponse,
 } from "../services/recallNotifications";
 import { getSupabaseStartupError } from "../services/supabaseClient";
+import {
+  clearPendingShareUrl,
+  getPendingShareUrl,
+  setPendingShareUrl,
+} from "../services/pendingShareService";
+import {
+  extractShareUrlFromLink,
+  normalizeShareUrlParam,
+  shareUrlsMatch,
+} from "../utils/shareDeepLink";
 import * as Notifications from "expo-notifications";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useGlobalSearchParams, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useState } from "react";
-import { Platform, Pressable, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  useColorScheme,
+  View,
+} from "react-native";
+import { StatusBar } from "expo-status-bar";
+import * as Linking from "expo-linking";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useAppearanceStore } from "../store/useAppearanceStore";
 SplashScreen.preventAutoHideAsync();
 
 function logStartup(stage, details) {
@@ -165,9 +189,170 @@ export default function RootLayout() {
   const supabaseUser = useSupabaseSessionStore((s) => s.user);
   const setSupabaseSession = useSupabaseSessionStore((s) => s.setSession);
   const [isAuthGateReady, setIsAuthGateReady] = useState(false);
+  const [showWhatsNext, setShowWhatsNext] = useState(false);
   const [displayNamePromptVisible, setDisplayNamePromptVisible] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
+  const appearanceReady = useAppearanceStore((state) => state.isReady);
+  const initializeAppearance = useAppearanceStore((state) => state.initialize);
+  const appearanceTheme = useAppearanceStore((state) => state.theme);
+  const reduceMotion = useAppearanceStore((state) => state.reduceMotion);
+  const systemColorScheme = useColorScheme();
+  const isDarkAppearance =
+    appearanceTheme === "Dark" ||
+    (appearanceTheme === "System" && systemColorScheme === "dark");
+  const pendingShareResumeRef = useRef(null);
+  const [pendingShareRetryToken, setPendingShareRetryToken] = useState(0);
+  const segments = useSegments();
+  const globalSearchParams = useGlobalSearchParams();
+  const PENDING_SHARE_RESUME_DEBOUNCE_MS = 2500;
+  const PENDING_SHARE_MAX_RESUME_ATTEMPTS = 8;
+
+  useEffect(() => {
+    if (startupConfigError || !supabaseReady) {
+      return undefined;
+    }
+
+    const handleIncomingShareLink = async (link) => {
+      const sharedUrl = extractShareUrlFromLink(link);
+      if (!sharedUrl) {
+        return;
+      }
+
+      if (!supabaseUser?.id) {
+        await setPendingShareUrl(sharedUrl);
+        return;
+      }
+
+      await clearPendingShareUrl();
+    };
+
+    Linking.getInitialURL()
+      .then((link) => handleIncomingShareLink(link))
+      .catch(() => null);
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      handleIncomingShareLink(url).catch(() => null);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [startupConfigError, supabaseReady, supabaseUser?.id]);
+
+  useEffect(() => {
+    if (startupConfigError || !supabaseReady || !supabaseUser?.id) {
+      if (!supabaseUser?.id) {
+        pendingShareResumeRef.current = null;
+      }
+      return undefined;
+    }
+
+    let active = true;
+    let retryTimer;
+
+    const scheduleRetry = (delayMs) => {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        if (active) {
+          setPendingShareRetryToken((token) => token + 1);
+        }
+      }, delayMs);
+    };
+
+    (async () => {
+      const pendingUrl = await getPendingShareUrl();
+      if (!active || !pendingUrl) {
+        return;
+      }
+
+      const resumeState = pendingShareResumeRef.current;
+      const routeUrl = normalizeShareUrlParam(globalSearchParams.url);
+      const isOnAddScreen = segments.includes("add");
+
+      if (
+        resumeState?.status === "confirmed" &&
+        shareUrlsMatch(resumeState.url, pendingUrl)
+      ) {
+        await clearPendingShareUrl().catch(() => null);
+        return;
+      }
+
+      if (isOnAddScreen && routeUrl && shareUrlsMatch(routeUrl, pendingUrl)) {
+        await clearPendingShareUrl();
+        pendingShareResumeRef.current = {
+          url: pendingUrl,
+          status: "confirmed",
+          attemptedAt: Date.now(),
+          attemptCount: resumeState?.attemptCount ?? 0,
+        };
+        return;
+      }
+
+      const recentlyAttempted =
+        resumeState?.url === pendingUrl &&
+        resumeState?.status === "navigating" &&
+        Date.now() - (resumeState.attemptedAt ?? 0) <
+          PENDING_SHARE_RESUME_DEBOUNCE_MS;
+
+      if (recentlyAttempted) {
+        scheduleRetry(
+          PENDING_SHARE_RESUME_DEBOUNCE_MS -
+            (Date.now() - (resumeState.attemptedAt ?? 0)),
+        );
+        return;
+      }
+
+      const nextAttemptCount =
+        resumeState?.url === pendingUrl ? (resumeState.attemptCount ?? 0) + 1 : 1;
+
+      if (nextAttemptCount > PENDING_SHARE_MAX_RESUME_ATTEMPTS) {
+        return;
+      }
+
+      pendingShareResumeRef.current = {
+        url: pendingUrl,
+        status: "navigating",
+        attemptedAt: Date.now(),
+        attemptCount: nextAttemptCount,
+      };
+
+      try {
+        router.replace({
+          pathname: "/(tabs)/add",
+          params: { url: pendingUrl },
+        });
+      } catch {
+        pendingShareResumeRef.current = {
+          url: pendingUrl,
+          status: "failed",
+          attemptedAt: Date.now(),
+          attemptCount: nextAttemptCount,
+        };
+      }
+
+      scheduleRetry(PENDING_SHARE_RESUME_DEBOUNCE_MS);
+    })().catch(() => {
+      pendingShareResumeRef.current = null;
+    });
+
+    return () => {
+      active = false;
+      clearTimeout(retryTimer);
+    };
+  }, [
+    globalSearchParams.url,
+    pendingShareRetryToken,
+    router,
+    segments,
+    startupConfigError,
+    supabaseReady,
+    supabaseUser?.id,
+  ]);
+
+  useEffect(() => {
+    initializeAppearance();
+  }, [initializeAppearance]);
 
   useEffect(() => {
     logStartup("root-layout-mounted", {
@@ -234,7 +419,20 @@ export default function RootLayout() {
       return undefined;
     }
 
+    const markOnceReminderDelivered = useRecallStore.getState().markOnceReminderDelivered;
+
+    const maybeCompleteOnceReminder = (response) => {
+      if (!isOnceReminderNotificationResponse(response)) {
+        return;
+      }
+
+      const videoId = getNotificationVideoIdFromResponse(response);
+      if (!videoId) return;
+      markOnceReminderDelivered(videoId).catch(() => null);
+    };
+
     const openVideoFromResponse = async (response) => {
+      maybeCompleteOnceReminder(response);
       const videoId = getNotificationVideoIdFromResponse(response);
       if (!videoId) return;
       await cancelFollowUpReminderNotificationsForVideo(videoId).catch(
@@ -257,14 +455,22 @@ export default function RootLayout() {
       })
       .catch(() => null);
 
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
+    const responseSubscription =
+      Notifications.addNotificationResponseReceivedListener((response) => {
         openVideoFromResponse(response);
+      });
+
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        maybeCompleteOnceReminder({
+          notification,
+        });
       },
     );
 
     return () => {
-      subscription.remove();
+      responseSubscription.remove();
+      receivedSubscription.remove();
     };
   }, [router, startupConfigError, supabaseUser?.id]);
 
@@ -329,6 +535,7 @@ export default function RootLayout() {
     let active = true;
 
     if (!supabaseUser?.id) {
+      setShowWhatsNext(false);
       Promise.all([
         getRecallGuestOnboardingComplete().catch(() => false),
         getRecallHasAuthenticated().catch(() => false),
@@ -353,18 +560,31 @@ export default function RootLayout() {
     }
 
     setAuthMode("signIn");
-    setIsAuthGateReady(true);
     setOnboardingStep(3);
+    setIsAuthGateReady(false);
 
     setRecallGuestOnboardingComplete().catch(() => null);
     setRecallHasAuthenticated().catch(() => null);
 
-    getRecallOnboardingComplete(supabaseUser.id)
-      .then((completed) => {
-        if (!active || completed) return;
-        return setRecallOnboardingComplete(supabaseUser.id).catch(() => null);
+    Promise.all([
+      shouldShowRecallWhatsNext(supabaseUser).catch(() => false),
+      getRecallOnboardingComplete(supabaseUser.id).catch(() => false),
+    ])
+      .then(([needsWhatsNext, onboardingCompleted]) => {
+        if (!active) return;
+
+        setShowWhatsNext(needsWhatsNext);
+        setIsAuthGateReady(true);
+
+        if (!onboardingCompleted) {
+          return setRecallOnboardingComplete(supabaseUser.id).catch(() => null);
+        }
       })
-      .catch(() => null);
+      .catch(() => {
+        if (!active) return;
+        setShowWhatsNext(false);
+        setIsAuthGateReady(true);
+      });
 
     return () => {
       active = false;
@@ -372,11 +592,11 @@ export default function RootLayout() {
   }, [startupConfigError, supabaseUser?.id]);
 
   useEffect(() => {
-    if (isReady && supabaseReady && isAuthGateReady) {
+    if (isReady && supabaseReady && isAuthGateReady && appearanceReady) {
       logStartup("splash-hidden");
       SplashScreen.hideAsync();
     }
-  }, [isAuthGateReady, isReady, supabaseReady]);
+  }, [appearanceReady, isAuthGateReady, isReady, supabaseReady]);
 
   if (startupConfigError) {
     return (
@@ -384,7 +604,7 @@ export default function RootLayout() {
     );
   }
 
-  if (!isReady || !supabaseReady || !isAuthGateReady) {
+  if (!isReady || !supabaseReady || !isAuthGateReady || !appearanceReady) {
     return null;
   }
 
@@ -425,6 +645,19 @@ export default function RootLayout() {
     );
   }
 
+  if (showWhatsNext) {
+    return (
+      <AppViewportFrame>
+        <RecallWhatsNextScreen
+          onContinue={async () => {
+            await setRecallWhatsNextComplete(supabaseUser.id).catch(() => null);
+            setShowWhatsNext(false);
+          }}
+        />
+      </AppViewportFrame>
+    );
+  }
+
   const handleCompleteDisplayName = async () => {
     const nextName = displayNameDraft.trim();
     if (!supabaseUser?.id || !nextName) return;
@@ -444,15 +677,22 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style={isDarkAppearance ? "light" : "dark"} />
         <AppViewportFrame>
-          <Stack screenOptions={{ headerShown: false }} initialRouteName="index">
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: reduceMotion ? "none" : "default",
+            }}
+            initialRouteName="index"
+          >
             <Stack.Screen name="index" />
             <Stack.Screen name="(tabs)" />
             <Stack.Screen
               name="video-detail"
               options={{
                 presentation: "card",
-                animation: "slide_from_right",
+                animation: reduceMotion ? "none" : "slide_from_right",
                 headerShown: false,
               }}
             />
@@ -460,7 +700,7 @@ export default function RootLayout() {
               name="routine-detail"
               options={{
                 presentation: "card",
-                animation: "slide_from_bottom",
+                animation: reduceMotion ? "none" : "slide_from_bottom",
                 headerShown: false,
               }}
             />
@@ -468,7 +708,7 @@ export default function RootLayout() {
               name="notification-opened"
               options={{
                 presentation: "modal",
-                animation: "slide_from_bottom",
+                animation: reduceMotion ? "none" : "slide_from_bottom",
                 headerShown: false,
               }}
             />
@@ -476,7 +716,7 @@ export default function RootLayout() {
               name="notifications-settings"
               options={{
                 presentation: "card",
-                animation: "slide_from_right",
+                animation: reduceMotion ? "none" : "slide_from_right",
                 headerShown: false,
               }}
             />
@@ -484,7 +724,15 @@ export default function RootLayout() {
               name="share-import"
               options={{
                 presentation: "fullScreenModal",
-                animation: "slide_from_bottom",
+                animation: reduceMotion ? "none" : "slide_from_bottom",
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="worth-revisiting"
+              options={{
+                presentation: "card",
+                animation: reduceMotion ? "none" : "slide_from_right",
                 headerShown: false,
               }}
             />
@@ -492,7 +740,15 @@ export default function RootLayout() {
               name="routine-completed"
               options={{
                 presentation: "fullScreenModal",
-                animation: "slide_from_bottom",
+                animation: reduceMotion ? "none" : "slide_from_bottom",
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="whats-next"
+              options={{
+                presentation: "fullScreenModal",
+                animation: reduceMotion ? "none" : "slide_from_bottom",
                 headerShown: false,
               }}
             />

@@ -1,5 +1,6 @@
 import { View, Text, Pressable } from "react-native";
-import { Check, Plus } from "lucide-react-native";
+import { Check } from "lucide-react-native";
+import { RecallSavedContentIcon } from "../RecallSavedContentIcon";
 import {
   BLACK,
   WHITE,
@@ -76,7 +77,7 @@ export function CollectionPicker({
             borderColor: GREY_MID,
           })}
         >
-          <Plus size={13} color={GREY_TEXT} />
+          <RecallSavedContentIcon name="folder-plus" size={13} />
           <Text
             style={{
               fontSize: 13,

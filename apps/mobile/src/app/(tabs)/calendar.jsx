@@ -1,14 +1,8 @@
-import { View, Text, ScrollView, Pressable, Switch } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Image } from "expo-image";
-import {
-  BellOff,
-  Clock,
-  Instagram,
-  Plus,
-  RotateCcw,
-  Youtube,
-} from "lucide-react-native";
+import { ChevronDown, Play } from "lucide-react-native";
+import { RecallReminderIcon } from "../../components/RecallReminderIcon";
+import { RecallActionIcon } from "../../components/RecallActionIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -16,149 +10,305 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/dev";
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { useRecallStore } from "../../store/useRecallStore";
-import { getReminderVideos, isReminderDueToday } from "../../utils/resurfacing";
+import { getReminderVideos, getNextReminderDate, formatReminderScheduleLabel } from "../../utils/resurfacing";
+import { getDisplayTitle } from "../../utils/titleHelpers";
 import { ReminderSetupModal } from "../../components/ReminderSetupModal";
 import { RecallSyncState } from "../../components/RecallSyncState";
-import { EmptyStateCard } from "../../components/EmptyStateCard";
-import { TikTokIcon } from "../../components/AddScreen/TikTokIcon";
+import { EmptyRemindersState } from "../../components/EmptyRemindersState";
+import { VideoThumbnail } from "../../components/VideoThumbnail";
+import { RECALL_COLORS } from "../../constants/recallTheme";
 
-const BG = "#F8F8F8";
-const WHITE = "#FFFFFF";
-const BLACK = "#000000";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F7";
-const GREY_MID = "#C7C7CC";
+const BG = RECALL_COLORS.background;
+const SURFACE = RECALL_COLORS.surface;
+const TEXT = RECALL_COLORS.text;
+const MUTED = RECALL_COLORS.secondaryText;
+const BORDER = RECALL_COLORS.border;
+const ACCENT = RECALL_COLORS.accent;
+const ACCENT_SOFT = RECALL_COLORS.subtle;
+const WHITE = RECALL_COLORS.surfaceStrong;
+const SERIF = "Georgia";
 
-function TikTokMark({ size = 12, color = "#000" }) {
+const FILTERS = ["All", "Today", "This Week", "Later"];
+
+const SECTION_META = {
+  today: {
+    label: "Today",
+    iconName: "today",
+  },
+  tomorrow: {
+    label: "Tomorrow",
+    iconName: "tomorrow",
+  },
+  thisWeek: {
+    label: "This Week",
+    iconName: "this-week",
+  },
+  later: {
+    label: "Later",
+    iconName: "later",
+  },
+};
+
+function getReminderBucket(nextDate, now = new Date()) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const nextStart = new Date(nextDate);
+  nextStart.setHours(0, 0, 0, 0);
+  const daysAway = Math.round((nextStart - start) / dayMs);
+
+  if (daysAway <= 0) return "today";
+  if (daysAway === 1) return "tomorrow";
+  if (daysAway <= 7) return "thisWeek";
+  return "later";
+}
+
+function ReminderSectionHeader({ sectionKey, count }) {
+  const { label, iconName } = SECTION_META[sectionKey];
+
   return (
-    <Text
-      style={{ fontSize: size, fontWeight: "900", color, lineHeight: size + 2 }}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 11,
+        paddingHorizontal: 2,
+      }}
     >
-      ♪
-    </Text>
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          backgroundColor: ACCENT_SOFT,
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 10,
+        }}
+      >
+        <RecallReminderIcon name={iconName} size={18} />
+      </View>
+      <Text
+        style={{
+          flex: 1,
+          fontSize: 19,
+          fontFamily: "Inter_600SemiBold",
+          color: TEXT,
+          letterSpacing: -0.3,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          fontSize: 14,
+          fontFamily: "Inter_500Medium",
+          color: MUTED,
+          marginRight: 5,
+        }}
+      >
+        {count}
+      </Text>
+      <ChevronDown size={16} color={MUTED} strokeWidth={1.8} />
+    </View>
   );
 }
 
-function PlatformIcon({ platform, size = 12 }) {
-  if (platform === "Instagram") {
-    return <Instagram size={size} color="#E4405F" />;
-  }
-  if (platform === "YouTube") {
-    return <Youtube size={size} color="#FF0000" />;
-  }
-  return <TikTokIcon size={size} color={BLACK} />;
-}
+function ReminderCard({ item, onOpen, onEdit }) {
+  const frequency = item.reminderFrequency ?? "Daily";
+  const showFrequency = frequency !== "Once";
 
-function ReminderCard({ item, enabled, onToggle, onPress }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={onOpen}
       style={({ pressed }) => ({
-        backgroundColor: pressed ? "#F5F5F5" : WHITE,
+        minHeight: 138,
+        backgroundColor: pressed ? "#FBF7F2" : SURFACE,
         borderRadius: 24,
         flexDirection: "row",
-        alignItems: "center",
-        overflow: "hidden",
+        alignItems: "flex-start",
+        padding: 6,
         marginBottom: 12,
-        shadowColor: BLACK,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: enabled ? 0.06 : 0.03,
+        shadowColor: "#8D7A68",
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: pressed ? 0.04 : 0.07,
         shadowRadius: 18,
-        elevation: 3,
-        opacity: enabled ? 1 : 0.58,
+        elevation: 2,
+        opacity: item.reminderEnabled ? 1 : 0.62,
       })}
     >
-      <Image
-        source={item.thumbnail}
-        style={{ width: 84, height: 104 }}
-        contentFit="cover"
-      />
+      <VideoThumbnail
+        thumbnailUrl={item.thumbnailUrl}
+        videoUrl={item.videoUrl}
+        videoId={item.id}
+        platform={item.platform}
+        style={{
+          width: 124,
+          height: 126,
+          borderRadius: 20,
+        }}
+        imageStyle={{ transform: [{ scale: 1.24 }] }}
+      >
+        <View
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 8,
+            height: 3,
+            borderRadius: 2,
+            backgroundColor: "rgba(255,255,255,0.45)",
+          }}
+        >
+          <View
+            style={{
+              width: "46%",
+              height: "100%",
+              borderRadius: 2,
+              backgroundColor: "rgba(255,255,255,0.92)",
+            }}
+          />
+        </View>
+      </VideoThumbnail>
 
-      <View style={{ flex: 1, paddingHorizontal: 15, paddingVertical: 14 }}>
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 126,
+          paddingLeft: 12,
+          paddingRight: 5,
+          paddingTop: 11,
+          paddingBottom: 8,
+        }}
+      >
+        <View>
+          <Text
+            style={{
+              fontSize: 13,
+              lineHeight: 16,
+              fontFamily: "Inter_600SemiBold",
+              color: TEXT,
+              letterSpacing: -0.15,
+              marginBottom: 2,
+            }}
+          >
+            {getDisplayTitle(item.title)}
+          </Text>
+          <Text
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            style={{
+              fontSize: 10.5,
+              lineHeight: 13,
+              fontFamily: "Inter_400Regular",
+              color: MUTED,
+            }}
+          >
+            {item.creator}
+          </Text>
+        </View>
+
         <View
           style={{
             flexDirection: "row",
-            alignItems: "center",
-            gap: 5,
-            marginBottom: 4,
+            flexWrap: "wrap",
+            columnGap: 5,
+            rowGap: 5,
+            marginTop: "auto",
           }}
         >
-          <PlatformIcon platform={item.platform} size={11} />
-          <Text
-            style={{
-              fontSize: 11,
-              fontFamily: "Inter_400Regular",
-              color: GREY_TEXT,
-            }}
-          >
-            {item.platform}
-          </Text>
-        </View>
-        <Text
-          style={{
-            fontSize: 14,
-            fontFamily: "Inter_600SemiBold",
-            color: BLACK,
-            marginBottom: 4,
-            letterSpacing: -0.2,
-          }}
-          numberOfLines={1}
-        >
-          {item.title}
-        </Text>
-        <Text
-          style={{
-            fontSize: 12,
-            fontFamily: "Inter_400Regular",
-            color: GREY_TEXT,
-            marginBottom: 6,
-          }}
-          numberOfLines={1}
-        >
-          {item.creator}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Clock size={11} color={GREY_MID} />
-          <Text
-            style={{
-              fontSize: 12,
-              fontFamily: "Inter_500Medium",
-              color: GREY_TEXT,
-            }}
-          >
-            {item.time}
-          </Text>
           <View
             style={{
-              width: 3,
-              height: 3,
-              borderRadius: 1.5,
-              backgroundColor: GREY_MID,
-            }}
-          />
-          <Text
-            style={{
-              fontSize: 12,
-              fontFamily: "Inter_400Regular",
-              color: GREY_TEXT,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              backgroundColor: "#F4EEE7",
+              borderRadius: 10,
+              paddingHorizontal: 7,
+              paddingVertical: 4,
             }}
           >
-            {item.frequency}
-          </Text>
+            <RecallReminderIcon name="today" size={11} />
+            <Text
+              style={{
+                fontSize: 9.5,
+                fontFamily: "Inter_500Medium",
+                color: "#755A40",
+              }}
+            >
+              {item.timingLabel}
+            </Text>
+          </View>
+
+          {showFrequency ? (
+            <View
+              style={{
+                backgroundColor: "#F5F0EA",
+                borderRadius: 10,
+                paddingHorizontal: 7,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 9,
+                  fontFamily: "Inter_500Medium",
+                  color: "#755A40",
+                }}
+              >
+                {frequency}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
-      <View style={{ paddingRight: 16 }}>
-        <Switch
-          value={enabled}
-          onValueChange={onToggle}
-          trackColor={{ false: GREY_LIGHT, true: BLACK }}
-          thumbColor={WHITE}
-          style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-        />
+      <View
+        style={{
+          width: 44,
+          height: 126,
+          paddingVertical: 6,
+          paddingRight: 2,
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Pressable
+          hitSlop={10}
+          onPress={(event) => {
+            event.stopPropagation();
+            onEdit();
+          }}
+          style={{
+            width: 34,
+            height: 28,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <RecallActionIcon name="edit" size={18} />
+        </Pressable>
+
+        <Pressable
+          hitSlop={8}
+          onPress={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+          style={{
+            width: 32,
+            height: 32,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Play size={22} color={ACCENT} fill={ACCENT} strokeWidth={1.5} />
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -179,104 +329,175 @@ export default function RemindersScreen() {
   const isLoading = useRecallStore((s) => s.isLoading);
   const errorMessage = useRecallStore((s) => s.errorMessage);
   const reloadData = useRecallStore((s) => s.reloadData);
-  const toggleReminder = useRecallStore((s) => s.toggleReminder);
   const updateReminder = useRecallStore((s) => s.updateReminder);
   const deleteReminder = useRecallStore((s) => s.deleteReminder);
   const [editingReminder, setEditingReminder] = useState(null);
+  const [activeFilter, setActiveFilter] = useState("All");
 
   const reminders = getReminderVideos(videos);
-  const activeCount = reminders.filter((v) => v.reminderEnabled).length;
-  const todayReminders = reminders.filter((v) => isReminderDueToday(v));
+
+  useEffect(() => {
+    const markOnceReminderDelivered =
+      useRecallStore.getState().markOnceReminderDelivered;
+
+    videos.forEach((video) => {
+      if (video.reminderFrequency !== "Once" || video.onceReminderCompletedAt) {
+        return;
+      }
+
+      const fireAt = video.onceReminderScheduledFireAt;
+      if (fireAt && new Date(fireAt).getTime() <= Date.now()) {
+        markOnceReminderDelivered(video.id).catch(() => null);
+      }
+    });
+  }, [videos]);
+
+  const groupedReminders = useMemo(() => {
+    const now = new Date();
+    const groups = {
+      today: [],
+      tomorrow: [],
+      thisWeek: [],
+      later: [],
+    };
+
+    reminders.forEach((video) => {
+      const nextDate = getNextReminderDate(video, now);
+      if (!nextDate) return;
+
+      const bucket = getReminderBucket(nextDate, now);
+      groups[bucket].push({
+        ...video,
+        nextDate,
+        timingLabel: formatReminderScheduleLabel(video, now),
+      });
+    });
+
+    Object.values(groups).forEach((group) => {
+      group.sort((a, b) => a.nextDate - b.nextDate);
+    });
+
+    return groups;
+  }, [reminders]);
+
+  const visibleSectionKeys = useMemo(() => {
+    if (activeFilter === "Today") return ["today"];
+    if (activeFilter === "This Week") {
+      return ["today", "tomorrow", "thisWeek"];
+    }
+    if (activeFilter === "Later") return ["later"];
+    return ["today", "tomorrow", "thisWeek", "later"];
+  }, [activeFilter]);
 
   if (!fontsLoaded) return null;
 
-  const adaptForCard = (video) => ({
-    ...video,
-    thumbnail: video.thumbnailUrl,
-    time: video.reminderTime ?? "Scheduled",
-    frequency: video.reminderFrequency ?? "Custom",
-  });
+  if (isLoaded && !errorMessage && reminders.length === 0) {
+    return (
+      <EmptyRemindersState
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        onCreateReminder={() => router.push("/(tabs)/saved")}
+      />
+    );
+  }
+
+  const openVideo = (video) => {
+    router.push({
+      pathname: "/video-detail",
+      params: { id: video.id },
+    });
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
-      <View
-        style={{
-          backgroundColor: WHITE,
-          paddingTop: insets.top + 12,
-          paddingBottom: 20,
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: insets.top + 16,
           paddingHorizontal: 20,
-          shadowColor: BLACK,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.04,
-          shadowRadius: 10,
-          elevation: 3,
+          paddingBottom: Math.max(insets.bottom + 74, 96),
         }}
+        showsVerticalScrollIndicator={false}
       >
         <View
           style={{
             flexDirection: "row",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginBottom: 16,
+            alignItems: "center",
           }}
         >
-          <View>
-            <Text
-              style={{
-                fontSize: 28,
-                fontFamily: "Inter_700Bold",
-                color: BLACK,
-                letterSpacing: -0.8,
-              }}
-            >
-              Reminders
-            </Text>
-            <Text
-              style={{
-                fontSize: 13,
-                fontFamily: "Inter_400Regular",
-                color: GREY_TEXT,
-                marginTop: 2,
-              }}
-            >
-              {activeCount} reminder{activeCount === 1 ? "" : "s"} on
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => router.push("/(tabs)/add")}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              backgroundColor: pressed ? "#1A1A1A" : BLACK,
-              borderRadius: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 9,
-            })}
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 34,
+              lineHeight: 40,
+              fontFamily: SERIF,
+              color: TEXT,
+              letterSpacing: -0.9,
+            }}
           >
-            <Plus size={14} color={WHITE} strokeWidth={2.5} />
-            <Text
-              style={{
-                fontSize: 13,
-                fontFamily: "Inter_600SemiBold",
-                color: WHITE,
-              }}
-            >
-              Add
-            </Text>
-          </Pressable>
+            Reminders
+          </Text>
         </View>
-      </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingTop: 24,
-          paddingHorizontal: 20,
-          paddingBottom: 40,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+        <Text
+          style={{
+            marginTop: 12,
+            fontSize: 15,
+            lineHeight: 21,
+            fontFamily: "Inter_400Regular",
+            color: MUTED,
+          }}
+        >
+          Your saved moments, resurfaced intentionally.
+        </Text>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            gap: 9,
+            paddingTop: 19,
+            paddingBottom: 25,
+          }}
+        >
+          {FILTERS.map((filter) => {
+            const active = activeFilter === filter;
+            return (
+              <Pressable
+                key={filter}
+                onPress={() => setActiveFilter(filter)}
+                style={({ pressed }) => ({
+                  minWidth: filter === "This Week" ? 116 : 76,
+                  height: 44,
+                  borderRadius: 22,
+                  paddingHorizontal: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: active
+                    ? pressed
+                      ? "#26221E"
+                      : "#151311"
+                    : pressed
+                      ? "#F4EEE7"
+                      : SURFACE,
+                  borderWidth: active ? 0 : 1,
+                  borderColor: BORDER,
+                })}
+              >
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontFamily: "Inter_500Medium",
+                    color: active ? WHITE : "#654B34",
+                  }}
+                >
+                  {filter}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
         <RecallSyncState
           isLoading={isLoading}
           isLoaded={isLoaded}
@@ -285,119 +506,27 @@ export default function RemindersScreen() {
           style={{ marginBottom: 18 }}
         />
 
-        {todayReminders.length > 0 && (
-          <View style={{ marginBottom: 28 }}>
-            <Text
-              style={{
-                fontSize: 17,
-                fontFamily: "Inter_700Bold",
-                color: BLACK,
-                letterSpacing: -0.4,
-                marginBottom: 14,
-              }}
-            >
-              Today's Reminders
-            </Text>
-            {todayReminders.map((item) => (
-              <ReminderCard
-                key={item.id}
-                item={adaptForCard(item)}
-                enabled={item.reminderEnabled}
-                onToggle={() => toggleReminder(item.id)}
-                onPress={() => setEditingReminder(item)}
+        {visibleSectionKeys.map((sectionKey) => {
+          const sectionReminders = groupedReminders[sectionKey];
+          if (sectionReminders.length === 0) return null;
+
+          return (
+            <View key={sectionKey} style={{ marginBottom: 18 }}>
+              <ReminderSectionHeader
+                sectionKey={sectionKey}
+                count={sectionReminders.length}
               />
-            ))}
-          </View>
-        )}
-
-        {reminders.length > 0 && (
-          <View style={{ marginBottom: 28 }}>
-            <Text
-              style={{
-                fontSize: 17,
-                fontFamily: "Inter_700Bold",
-                color: BLACK,
-                letterSpacing: -0.4,
-                marginBottom: 14,
-              }}
-            >
-              All Reminders
-            </Text>
-            {reminders.map((item) => (
-              <ReminderCard
-                key={item.id}
-                item={adaptForCard(item)}
-                enabled={item.reminderEnabled}
-                onToggle={() => toggleReminder(item.id)}
-                onPress={() => setEditingReminder(item)}
-              />
-            ))}
-          </View>
-        )}
-
-        {reminders.length === 0 && !errorMessage && (
-          <EmptyStateCard
-            icon={<BellOff size={28} color={BLACK} />}
-            title="No reminders set"
-            text="Add reminders to videos you want to revisit on specific days."
-            ctaLabel="Browse Library"
-            onPress={() => router.push("/(tabs)/saved")}
-          />
-        )}
-
-        {reminders.length > 0 && activeCount === 0 && (
-          <View
-            style={{
-              backgroundColor: WHITE,
-              borderRadius: 20,
-              padding: 20,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 14,
-              shadowColor: BLACK,
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.04,
-              shadowRadius: 10,
-              elevation: 1,
-              marginBottom: 16,
-            }}
-          >
-            <View
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                backgroundColor: GREY_LIGHT,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <RotateCcw size={20} color={GREY_TEXT} />
+              {sectionReminders.map((item) => (
+                <ReminderCard
+                  key={item.id}
+                  item={item}
+                  onOpen={() => openVideo(item)}
+                  onEdit={() => setEditingReminder(item)}
+                />
+              ))}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontFamily: "Inter_600SemiBold",
-                  color: BLACK,
-                  marginBottom: 3,
-                }}
-              >
-                No reminders are active right now
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontFamily: "Inter_400Regular",
-                  color: GREY_TEXT,
-                  lineHeight: 18,
-                }}
-              >
-                Turn one back on any time you want a gentle nudge.
-              </Text>
-            </View>
-          </View>
-        )}
+          );
+        })}
       </ScrollView>
 
       <ReminderSetupModal

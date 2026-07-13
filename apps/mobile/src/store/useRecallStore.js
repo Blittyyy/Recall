@@ -26,13 +26,28 @@ import {
 } from "../services/reminderService";
 import {
   cancelFollowUpReminderNotificationsForVideo,
+  clearOnceReminderCompleted,
   clearReminderFollowUpDelayForVideo,
   cancelReminderNotificationsForVideo,
+  getOnceReminderCompletedMap,
+  getOnceReminderScheduleMap,
   getReminderFollowUpPreferences,
+  markOnceReminderCompleted,
   resyncReminderNotifications,
   setReminderFollowUpDelayForVideo,
+  syncOnceReminderCompletionState,
   syncReminderNotificationForVideo,
 } from "../services/recallNotifications";
+import {
+  clearWorthRevisitingHomeEntry,
+  loadWorthRevisitingHomeMeta,
+  markWorthRevisitingHomeExpired,
+  setWorthRevisitingHomeShown,
+} from "../services/worthRevisitingHomeStorage";
+import {
+  loadDevWorthRevisitingOverrides,
+  setDevWorthRevisitingOverride,
+} from "../services/worthRevisitingDevStorage";
 import { usePaywallStore } from "./usePaywallStore";
 import {
   getFreemiumUsage,
@@ -116,6 +131,8 @@ const withDefaults = (video) => ({
   collections: video.collections ?? [],
   dismissedFromResurfacingUntil: video.dismissedFromResurfacingUntil ?? null,
   shownInWorthRevisitingAt: video.shownInWorthRevisitingAt ?? null,
+  worthRevisitingHomeExpiredAt: video.worthRevisitingHomeExpiredAt ?? null,
+  devWorthRevisitingOverride: video.devWorthRevisitingOverride ?? false,
   hasReminder: video.hasReminder ?? false,
   reminderEnabled: video.reminderEnabled ?? false,
   reminderTime: video.reminderTime ?? null,
@@ -124,8 +141,11 @@ const withDefaults = (video) => ({
   reminderId: video.reminderId ?? null,
   reminderTimezone: video.reminderTimezone ?? null,
   reminderFollowUpDelayMinutes: video.reminderFollowUpDelayMinutes ?? null,
+  onceReminderCompletedAt: video.onceReminderCompletedAt ?? null,
+  onceReminderScheduledFireAt: video.onceReminderScheduledFireAt ?? null,
   revisitCount: video.revisitCount ?? 0,
   archived: video.archived ?? false,
+  availabilityStatus: video.availabilityStatus ?? null,
   creator: video.creator ?? "Unknown creator",
   title: video.title ?? "Saved Video",
   thumbnailUrl:
@@ -192,6 +212,7 @@ function normalizeRecallData(savedVideoRows, collectionRows, reminderRows) {
         lastOpenedAt: row.last_opened_at,
         dismissedFromResurfacingUntil:
           row.dismissed_from_resurfacing_until ?? null,
+        availabilityStatus: row.availability_status ?? null,
         shownInWorthRevisitingAt: null,
         hasReminder: !!reminder,
         reminderId: reminder?.id ?? null,
@@ -209,22 +230,83 @@ function normalizeRecallData(savedVideoRows, collectionRows, reminderRows) {
   return { videos, collections };
 }
 
+async function hydrateDevWorthRevisitingOverrides(videos) {
+  if (typeof __DEV__ === "undefined" || !__DEV__) {
+    return videos;
+  }
+
+  if (!Array.isArray(videos) || videos.length === 0) {
+    return [];
+  }
+
+  const overrides = await loadDevWorthRevisitingOverrides();
+
+  return videos.map((video) =>
+    withDefaults({
+      ...video,
+      devWorthRevisitingOverride: !!overrides[video.id],
+    }),
+  );
+}
+
+async function hydrateWorthRevisitingHomePreferences(videos) {
+  if (!Array.isArray(videos) || videos.length === 0) {
+    return [];
+  }
+
+  const meta = await loadWorthRevisitingHomeMeta();
+
+  return videos.map((video) => {
+    const entry = meta[video.id];
+    if (!entry) {
+      return video;
+    }
+
+    return withDefaults({
+      ...video,
+      shownInWorthRevisitingAt: entry.shownAt ?? null,
+      worthRevisitingHomeExpiredAt: entry.expiredAt ?? null,
+    });
+  });
+}
+
 async function hydrateReminderLocalPreferences(videos) {
   if (!Array.isArray(videos) || videos.length === 0) {
     return [];
   }
 
-  const followUpPreferences = await getReminderFollowUpPreferences(
-    videos.map((video) => video.id),
-  );
+  const videoIds = videos.map((video) => video.id);
+  const [followUpPreferences, onceCompletedMap, onceScheduleMap] =
+    await Promise.all([
+      getReminderFollowUpPreferences(videoIds),
+      getOnceReminderCompletedMap(),
+      getOnceReminderScheduleMap(),
+    ]);
 
-  return videos.map((video) =>
-    withDefaults({
-      ...video,
-      reminderFollowUpDelayMinutes:
-        followUpPreferences[video.id] ?? video.reminderFollowUpDelayMinutes ?? null,
+  const hydrated = await Promise.all(
+    videos.map(async (video) => {
+      const onceReminderCompletedAt =
+        onceCompletedMap[video.id] ??
+        (video.reminderFrequency === "Once"
+          ? await syncOnceReminderCompletionState(video)
+          : null) ??
+        video.onceReminderCompletedAt ??
+        null;
+
+      return withDefaults({
+        ...video,
+        reminderFollowUpDelayMinutes:
+          followUpPreferences[video.id] ??
+          video.reminderFollowUpDelayMinutes ??
+          null,
+        onceReminderCompletedAt,
+        onceReminderScheduledFireAt:
+          onceScheduleMap[video.id] ?? video.onceReminderScheduledFireAt ?? null,
+      });
     }),
   );
+
+  return hydrated;
 }
 
 function patchVideo(videos, id, updater) {
@@ -296,6 +378,24 @@ function applyReminderPatch(video, updates) {
   return withDefaults(next);
 }
 
+async function prepareOnceReminderForSync(video) {
+  if (
+    video?.reminderFrequency !== "Once" ||
+    !video?.hasReminder ||
+    !video?.reminderEnabled
+  ) {
+    return video;
+  }
+
+  await clearOnceReminderCompleted(video.id);
+
+  return withDefaults({
+    ...video,
+    onceReminderCompletedAt: null,
+    onceReminderScheduledFireAt: null,
+  });
+}
+
 function buildMutationError(error, fallback) {
   return getFriendlySupabaseError(error, fallback);
 }
@@ -357,8 +457,10 @@ export const useRecallStore = create((set, get) => ({
         collectionRows,
         reminderRows,
       );
-      const hydratedVideos = await hydrateReminderLocalPreferences(
-        normalized.videos,
+      const hydratedVideos = await hydrateDevWorthRevisitingOverrides(
+        await hydrateWorthRevisitingHomePreferences(
+          await hydrateReminderLocalPreferences(normalized.videos),
+        ),
       );
       set({
         ...normalized,
@@ -401,6 +503,91 @@ export const useRecallStore = create((set, get) => ({
     await get().initialize(get().authContext);
   },
 
+  setDevWorthRevisitingForTesting: async (id) => {
+    if (typeof __DEV__ === "undefined" || !__DEV__) {
+      return false;
+    }
+
+    const previousVideos = get().videos;
+    const target = previousVideos.find((video) => video.id === id);
+    if (!target) return false;
+
+    set({
+      videos: patchVideo(previousVideos, id, (video) => ({
+        ...video,
+        devWorthRevisitingOverride: true,
+        lastOpenedAt: null,
+        archived: false,
+        dismissedFromResurfacingUntil: null,
+        shownInWorthRevisitingAt: null,
+        worthRevisitingHomeExpiredAt: null,
+      })),
+      errorMessage: null,
+    });
+
+    try {
+      await setDevWorthRevisitingOverride(id, true);
+      await clearWorthRevisitingHomeEntry(id);
+      await updateSavedVideo({
+        ...get().authContext,
+        id,
+        updates: {
+          lastOpenedAt: null,
+          archived: false,
+          dismissedFromResurfacingUntil: null,
+        },
+      });
+      return true;
+    } catch (error) {
+      set({
+        videos: previousVideos,
+        errorMessage: buildMutationError(
+          error,
+          "Recall could not enable the dev Worth Revisiting override.",
+        ),
+      });
+      return false;
+    }
+  },
+
+  touchVideoSavedAt: async (id) => {
+    const previousVideos = get().videos;
+    const target = previousVideos.find((video) => video.id === id);
+    if (!target) return;
+
+    const savedAt = nowIso();
+    set({
+      videos: patchVideo(previousVideos, id, (video) => ({
+        ...video,
+        savedAt,
+        dismissedFromResurfacingUntil: null,
+        shownInWorthRevisitingAt: null,
+        worthRevisitingHomeExpiredAt: null,
+      })),
+      errorMessage: null,
+    });
+
+    try {
+      await updateSavedVideo({
+        ...get().authContext,
+        id,
+        updates: {
+          savedAt,
+          dismissedFromResurfacingUntil: null,
+        },
+      });
+      await clearWorthRevisitingHomeEntry(id);
+    } catch (error) {
+      set({
+        videos: previousVideos,
+        errorMessage: buildMutationError(
+          error,
+          "Recall could not update this save date right now.",
+        ),
+      });
+    }
+  },
+
   addVideo: async (video) => {
     const { authContext } = get();
     if (!authContext.userId) {
@@ -419,8 +606,12 @@ export const useRecallStore = create((set, get) => ({
 
     if (existingVideo) {
       set({ errorMessage: null });
+      await get().touchVideoSavedAt(existingVideo.id);
+      const refreshedVideo = get().videos.find(
+        (video) => video.id === existingVideo.id,
+      );
       return {
-        ...existingVideo,
+        ...(refreshedVideo ?? existingVideo),
         alreadySaved: true,
       };
     }
@@ -474,8 +665,13 @@ export const useRecallStore = create((set, get) => ({
           await get().reloadData();
         }
 
+        await get().touchVideoSavedAt(savedVideoRow.id);
+        const refreshedVideo = get().videos.find(
+          (video) => video.id === savedVideoRow.id,
+        );
+
         return {
-          ...savedVideoRow,
+          ...(refreshedVideo ?? savedVideoRow),
           alreadySaved: true,
         };
       }
@@ -579,8 +775,22 @@ export const useRecallStore = create((set, get) => ({
         updates,
       });
       if (hasReminderUpdates(updates)) {
-        const currentVideo = get().videos.find((video) => video.id === id);
+        let currentVideo = get().videos.find((video) => video.id === id);
         if (!currentVideo) return null;
+        const isCreatingReminder =
+          !previousVideos.find((video) => video.id === id)?.hasReminder &&
+          currentVideo.hasReminder &&
+          currentVideo.reminderEnabled;
+        currentVideo = await prepareOnceReminderForSync(currentVideo);
+        if (
+          currentVideo.reminderFrequency === "Once" &&
+          currentVideo.hasReminder &&
+          currentVideo.reminderEnabled
+        ) {
+          set({
+            videos: patchVideo(get().videos, id, () => currentVideo),
+          });
+        }
         await setReminderFollowUpDelayForVideo(
           id,
           currentVideo.reminderFollowUpDelayMinutes,
@@ -610,7 +820,7 @@ export const useRecallStore = create((set, get) => ({
               Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
           {
-            requestPermission: true,
+            requestPermission: isCreatingReminder,
           },
         );
       }
@@ -866,8 +1076,22 @@ export const useRecallStore = create((set, get) => ({
     });
 
     try {
-      const savedVideo = get().videos.find((video) => video.id === id);
+      let savedVideo = get().videos.find((video) => video.id === id);
       if (!savedVideo) return null;
+      const isCreatingReminder =
+        !currentVideo.hasReminder &&
+        savedVideo.hasReminder &&
+        savedVideo.reminderEnabled;
+      savedVideo = await prepareOnceReminderForSync(savedVideo);
+      if (
+        savedVideo.reminderFrequency === "Once" &&
+        savedVideo.hasReminder &&
+        savedVideo.reminderEnabled
+      ) {
+        set({
+          videos: patchVideo(get().videos, id, () => savedVideo),
+        });
+      }
       await setReminderFollowUpDelayForVideo(
         id,
         savedVideo.reminderFollowUpDelayMinutes,
@@ -897,7 +1121,7 @@ export const useRecallStore = create((set, get) => ({
             Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
         {
-          requestPermission: true,
+          requestPermission: isCreatingReminder,
         },
       );
       return {
@@ -913,6 +1137,24 @@ export const useRecallStore = create((set, get) => ({
       });
       return null;
     }
+  },
+
+  markOnceReminderDelivered: async (videoId) => {
+    if (!videoId) return;
+
+    const target = get().videos.find((video) => video.id === videoId);
+    if (!target || target.reminderFrequency !== "Once") {
+      return;
+    }
+
+    const completedAt = await markOnceReminderCompleted(videoId);
+    set({
+      videos: patchVideo(get().videos, videoId, (video) => ({
+        ...video,
+        onceReminderCompletedAt: completedAt,
+        onceReminderScheduledFireAt: null,
+      })),
+    });
   },
 
   deleteReminder: async (id) => {
@@ -933,6 +1175,7 @@ export const useRecallStore = create((set, get) => ({
       await cancelReminderNotificationsForVideo(id);
       await cancelFollowUpReminderNotificationsForVideo(id);
       await clearReminderFollowUpDelayForVideo(id);
+      await clearOnceReminderCompleted(id);
       await deleteReminderRecord({
         ...get().authContext,
         videoId: id,
@@ -991,6 +1234,8 @@ export const useRecallStore = create((set, get) => ({
       videos: patchVideo(previousVideos, id, (video) => ({
         ...video,
         archived: true,
+        shownInWorthRevisitingAt: null,
+        worthRevisitingHomeExpiredAt: null,
       })),
       errorMessage: null,
     });
@@ -999,6 +1244,7 @@ export const useRecallStore = create((set, get) => ({
       await cancelReminderNotificationsForVideo(id);
       await cancelFollowUpReminderNotificationsForVideo(id);
       await clearReminderFollowUpDelayForVideo(id);
+      await clearWorthRevisitingHomeEntry(id);
       await archiveSavedVideo({
         ...get().authContext,
         id,
@@ -1022,18 +1268,31 @@ export const useRecallStore = create((set, get) => ({
       videos: patchVideo(previousVideos, id, (video) => ({
         ...video,
         archived: false,
+        dismissedFromResurfacingUntil: null,
+        shownInWorthRevisitingAt: null,
+        worthRevisitingHomeExpiredAt: null,
       })),
       errorMessage: null,
     });
 
     try {
+      await clearWorthRevisitingHomeEntry(id);
       await updateSavedVideo({
         ...get().authContext,
         id,
         updates: {
           archived: false,
+          dismissedFromResurfacingUntil: null,
         },
       });
+
+      const restoredVideo = get().videos.find((video) => video.id === id);
+      if (restoredVideo?.reminderEnabled && restoredVideo?.hasReminder) {
+        await syncReminderNotificationForVideo(withDefaults(restoredVideo), {
+          requestPermission: false,
+        });
+      }
+
       return true;
     } catch (error) {
       set({
@@ -1061,6 +1320,8 @@ export const useRecallStore = create((set, get) => ({
       await cancelReminderNotificationsForVideo(id);
       await cancelFollowUpReminderNotificationsForVideo(id);
       await clearReminderFollowUpDelayForVideo(id);
+      await clearOnceReminderCompleted(id);
+      await clearWorthRevisitingHomeEntry(id);
       await deleteReminderRecord({
         ...authContext,
         videoId: id,
@@ -1085,6 +1346,75 @@ export const useRecallStore = create((set, get) => ({
         ),
       });
       return false;
+    }
+  },
+
+  markShownInWorthRevisitingHome: async (id) => {
+    const target = get().videos.find((video) => video.id === id);
+    if (!target || target.shownInWorthRevisitingAt) {
+      return;
+    }
+
+    const shownAt = nowIso();
+    const previousVideos = get().videos;
+
+    set({
+      videos: patchVideo(previousVideos, id, (video) => ({
+        ...video,
+        shownInWorthRevisitingAt: shownAt,
+        worthRevisitingHomeExpiredAt: null,
+      })),
+    });
+
+    try {
+      await setWorthRevisitingHomeShown(id, shownAt);
+    } catch (error) {
+      console.error(
+        "[Recall worth revisiting] Failed to persist home shown timestamp",
+        error,
+      );
+    }
+  },
+
+  clearFromHomeWorthRevisiting: async (id) => {
+    const previousVideos = get().videos;
+
+    set({
+      videos: patchVideo(previousVideos, id, (video) => ({
+        ...video,
+        shownInWorthRevisitingAt: null,
+      })),
+    });
+
+    try {
+      await clearWorthRevisitingHomeEntry(id);
+    } catch (error) {
+      console.error(
+        "[Recall worth revisiting] Failed to clear home shown timestamp",
+        error,
+      );
+    }
+  },
+
+  expireFromHomeWorthRevisiting: async (id) => {
+    const expiredAt = nowIso();
+    const previousVideos = get().videos;
+
+    set({
+      videos: patchVideo(previousVideos, id, (video) => ({
+        ...video,
+        shownInWorthRevisitingAt: null,
+        worthRevisitingHomeExpiredAt: expiredAt,
+      })),
+    });
+
+    try {
+      await markWorthRevisitingHomeExpired(id, expiredAt);
+    } catch (error) {
+      console.error(
+        "[Recall worth revisiting] Failed to persist home expiry",
+        error,
+      );
     }
   },
 

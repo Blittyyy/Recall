@@ -5,23 +5,22 @@ import {
   Pressable,
   Animated,
   TextInput,
+  StyleSheet,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import {
-  Search,
   Instagram,
   Youtube,
-  Clock,
   ChevronRight,
-  Play,
-  RotateCcw,
-  SlidersHorizontal,
-  FolderOpen,
+  ChevronDown,
   Plus,
-  Bookmark,
+  Check,
   ChevronRight as ChevRight,
 } from "lucide-react-native";
+import { RecallSavedContentIcon } from "../../components/RecallSavedContentIcon";
+import { RecallActionIcon } from "../../components/RecallActionIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -29,8 +28,9 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/dev";
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
 import { CATEGORIES as ADD_CATEGORIES } from "../../constants/addScreen";
 // ── NEW: store + resurfacing helpers ──────────────────────────────────────────
 import { useRecallStore } from "../../store/useRecallStore";
@@ -39,15 +39,64 @@ import { RecallSyncState } from "../../components/RecallSyncState";
 import { VideoThumbnail } from "../../components/VideoThumbnail";
 import { NewCollectionModal } from "../../components/AddScreen/NewCollectionModal";
 import { TikTokIcon } from "../../components/AddScreen/TikTokIcon";
-import { daysAgoFromISO, getCategoryMeta } from "../../utils/resurfacing";
+import { daysAgoFromISO, getCategoryMeta, getWorthRevisitingCount, isActiveReminderSchedule } from "../../utils/resurfacing";
+import { SHARE_EXTENSION_EMPTY_NOTE } from "../../constants/shareExtensionEducation";
+import { getDisplayTitle } from "../../utils/titleHelpers";
+import {
+  getSessionLibrarySort,
+  setSessionLibrarySort,
+  sortLibraryVideos,
+  LIBRARY_SORT_OPTIONS,
+} from "../../utils/librarySort";
+import { LibrarySortSheet } from "../../components/LibrarySortSheet";
+import { RECALL_COLORS } from "../../constants/recallTheme";
+import Reanimated, {
+  Easing,
+  LinearTransition,
+  interpolate,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { useAppearanceStore } from "../../store/useAppearanceStore";
+
+const LIBRARY_REORDER_LAYOUT = LinearTransition.duration(320).easing(
+  Easing.out(Easing.cubic),
+);
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
-const BG = "#F8F8F8";
-const WHITE = "#FFFFFF";
-const BLACK = "#000000";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F7";
-const GREY_MID = "#C7C7CC";
+const BG = RECALL_COLORS.background;
+const WHITE = RECALL_COLORS.surfaceStrong;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.mutedText;
+const GREY_LIGHT = RECALL_COLORS.subtleStrong;
+const GREY_MID = RECALL_COLORS.mid;
+const WARM_SURFACE = RECALL_COLORS.surface;
+const WARM_INPUT = RECALL_COLORS.surface;
+const WARM_BORDER = RECALL_COLORS.border;
+const WARM_TEXT = RECALL_COLORS.text;
+const WARM_MUTED = RECALL_COLORS.secondaryText;
+const WARM_ACCENT = RECALL_COLORS.accent;
+const WARM_SHADOW = RECALL_COLORS.shadow;
+const LIBRARY_SOFT_OUTLINE = "#EBE3D9";
+const LIBRARY_SOFT_OUTLINE_FOCUS = "#DDD2C4";
+const SEARCH_FOCUS_MS = 200;
+const SEARCH_BLUR_MS = 180;
+const SEARCH_EXPAND_SCALE = 1.012;
+const SEARCH_PLACEHOLDER = "#A39B92";
+const SEARCH_CURSOR = "#1E1915";
+const COLLECTION_CARD_SPRING = {
+  damping: 18,
+  stiffness: 380,
+  mass: 0.5,
+};
+const COLLECTION_CARD_LIFT = 4;
+const COLLECTION_CARD_PRESS_SCALE = 0.98;
+const LIBRARY_BODY_PADDING = 20;
+const LIBRARY_PREVIEW_GAP = 10;
 const LIBRARY_EMPTY_IMAGE = require("../../../assets/images/library-empty.png");
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,42 +210,547 @@ const BASE_CATEGORY_FILTERS = [
   ...ADD_CATEGORIES,
 ];
 
-function CollectionGridCard({ item, onPress }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const handleIn = () =>
-    Animated.spring(scaleAnim, {
-      toValue: 0.97,
-      useNativeDriver: true,
-      tension: 200,
-      friction: 10,
-    }).start();
-  const handleOut = () =>
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 200,
-      friction: 8,
-    }).start();
+const CHIP_SPRING = {
+  damping: 18,
+  stiffness: 420,
+  mass: 0.45,
+};
+const CHIP_COLOR_MS = 200;
+const CHIP_ENTRANCE_MS = 220;
+const CHIP_ENTRANCE_STAGGER_MS = 40;
+const CHIP_ENTRANCE_OFFSET = 8;
+const CATEGORY_FILTER_MS = 225;
+const CATEGORY_FILTER_SLIDE = 10;
+const CHIP_BORDER_WIDTH = StyleSheet.hairlineWidth;
+// Reanimated interpolateColor needs static hex strings (not DynamicColorIOS).
+const CHIP_INACTIVE_BG = "#FFFCF8";
+const CHIP_ACTIVE_BG = "#1E1915";
+const CHIP_INACTIVE_BORDER = "#EBE3D9";
+const CHIP_ACTIVE_BORDER = "#1E1915";
+const CHIP_INACTIVE_LABEL = "#756E67";
+const CHIP_ACTIVE_LABEL = "#FFFFFF";
 
+function CategoryFilterChip({ cat, index, active, onPress, reduceMotion, skipEntrance }) {
+  const colorProgress = useSharedValue(active ? 1 : 0);
+  const pressScale = useSharedValue(1);
+  const entranceProgress = useSharedValue(reduceMotion || skipEntrance ? 1 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      colorProgress.value = active ? 1 : 0;
+      return;
+    }
+
+    colorProgress.value = withTiming(active ? 1 : 0, {
+      duration: CHIP_COLOR_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [active, colorProgress, reduceMotion]);
+
+  useEffect(() => {
+    if (reduceMotion || skipEntrance) {
+      entranceProgress.value = 1;
+      return;
+    }
+
+    entranceProgress.value = withDelay(
+      index * CHIP_ENTRANCE_STAGGER_MS,
+      withTiming(1, {
+        duration: CHIP_ENTRANCE_MS,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [entranceProgress, index, reduceMotion, skipEntrance]);
+
+  const chipStyle = useAnimatedStyle(() => ({
+    opacity: entranceProgress.value,
+    transform: [
+      {
+        translateY: reduceMotion
+          ? 0
+          : interpolate(entranceProgress.value, [0, 1], [CHIP_ENTRANCE_OFFSET, 0]),
+      },
+      { scale: pressScale.value },
+    ],
+    backgroundColor: interpolateColor(
+      colorProgress.value,
+      [0, 1],
+      [CHIP_INACTIVE_BG, CHIP_ACTIVE_BG],
+    ),
+    borderColor: interpolateColor(
+      colorProgress.value,
+      [0, 1],
+      [CHIP_INACTIVE_BORDER, CHIP_ACTIVE_BORDER],
+    ),
+    borderWidth: CHIP_BORDER_WIDTH,
+  }));
+
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      colorProgress.value,
+      [0, 1],
+      [CHIP_INACTIVE_LABEL, CHIP_ACTIVE_LABEL],
+    ),
+  }));
+
+  const handlePressIn = () => {
+    if (reduceMotion) {
+      return;
+    }
+    pressScale.value = withTiming(0.97, { duration: 90 });
+  };
+
+  const handlePressOut = () => {
+    if (reduceMotion) {
+      return;
+    }
+    pressScale.value = withSpring(1, CHIP_SPRING);
+  };
+
+  const handlePress = () => {
+    if (!active) {
+      Haptics.selectionAsync().catch(() => null);
+    }
+    onPress();
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+    >
+      <Reanimated.View
+        style={[
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 5,
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            borderRadius: 32,
+          },
+          chipStyle,
+        ]}
+      >
+        {cat.emoji ? <Text style={{ fontSize: 12 }}>{cat.emoji}</Text> : null}
+        <Reanimated.Text
+          style={[
+            {
+              fontSize: 13,
+              fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
+            },
+            labelStyle,
+          ]}
+        >
+          {cat.label}
+        </Reanimated.Text>
+      </Reanimated.View>
+    </Pressable>
+  );
+}
+
+function CategoryFilterChipRow({
+  categoryFilters,
+  activeCategory,
+  onSelectCategory,
+  reduceMotion,
+  chipListPaddingTop = 0,
+  entranceDoneRef,
+}) {
+  const scrollRef = useRef(null);
+  const scrollWidthRef = useRef(0);
+  const contentWidthRef = useRef(0);
+  const chipLayoutsRef = useRef({});
+  const skipEntrance = entranceDoneRef?.current ?? false;
+
+  useEffect(() => {
+    if (reduceMotion || skipEntrance || !entranceDoneRef) {
+      return;
+    }
+
+    const totalDuration =
+      Math.max(0, categoryFilters.length - 1) * CHIP_ENTRANCE_STAGGER_MS +
+      CHIP_ENTRANCE_MS;
+    const timer = setTimeout(() => {
+      entranceDoneRef.current = true;
+    }, totalDuration);
+
+    return () => clearTimeout(timer);
+  }, [categoryFilters.length, entranceDoneRef, reduceMotion, skipEntrance]);
+
+  const scrollToActiveChip = useCallback(
+    (categoryId, animated = true) => {
+      const layout = chipLayoutsRef.current[categoryId];
+      if (!layout || scrollWidthRef.current <= 0) {
+        return;
+      }
+
+      const targetX = layout.x + layout.width / 2 - scrollWidthRef.current / 2;
+      const maxScroll = Math.max(0, contentWidthRef.current - scrollWidthRef.current);
+      scrollRef.current?.scrollTo({
+        x: Math.min(maxScroll, Math.max(0, targetX)),
+        animated: reduceMotion ? false : animated,
+      });
+    },
+    [reduceMotion],
+  );
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      scrollToActiveChip(activeCategory);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeCategory, categoryFilters.length, scrollToActiveChip]);
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onLayout={(event) => {
+        scrollWidthRef.current = event.nativeEvent.layout.width;
+        scrollToActiveChip(activeCategory, false);
+      }}
+      onContentSizeChange={(width) => {
+        contentWidthRef.current = width;
+        scrollToActiveChip(activeCategory, false);
+      }}
+      contentContainerStyle={{ gap: 8, paddingTop: chipListPaddingTop }}
+      style={{
+        flexGrow: 0,
+        marginHorizontal: -20,
+        paddingHorizontal: 20,
+      }}
+    >
+      {categoryFilters.map((cat, index) => (
+        <View
+          key={cat.id}
+          onLayout={(event) => {
+            chipLayoutsRef.current[cat.id] = event.nativeEvent.layout;
+          }}
+        >
+          <CategoryFilterChip
+            cat={cat}
+            index={index}
+            active={activeCategory === cat.id}
+            onPress={() => onSelectCategory(cat.id)}
+            reduceMotion={reduceMotion}
+            skipEntrance={skipEntrance}
+          />
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function LibraryCategorySectionHeader({
+  title,
+  videoCount,
+  showSortButton,
+  activeSortLabel,
+  onOpenSort,
+  reduceMotion,
+}) {
+  const headerTransition = useSharedValue(1);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      headerTransition.value = 1;
+      return;
+    }
+
+    headerTransition.value = 0;
+    headerTransition.value = withTiming(1, {
+      duration: CATEGORY_FILTER_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [headerTransition, reduceMotion, title, videoCount]);
+
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion
+      ? 1
+      : interpolate(headerTransition.value, [0, 1], [0, 1]),
+    transform: [
+      {
+        translateY: reduceMotion
+          ? 0
+          : interpolate(headerTransition.value, [0, 1], [CATEGORY_FILTER_SLIDE, 0]),
+      },
+    ],
+  }));
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        marginBottom: 16,
+        borderLeftWidth: 3,
+        borderLeftColor: WARM_ACCENT,
+        paddingLeft: 12,
+      }}
+    >
+      <Reanimated.View style={[{ flex: 1 }, headerAnimatedStyle]}>
+        <Text
+          style={{
+            fontSize: 17,
+            fontFamily: "Inter_700Bold",
+            color: WARM_TEXT,
+            letterSpacing: -0.2,
+          }}
+        >
+          {title}
+        </Text>
+        {videoCount > 0 ? (
+          <Text
+            style={{
+              marginTop: 3,
+              fontSize: 13,
+              fontFamily: "Inter_400Regular",
+              color: WARM_MUTED,
+            }}
+          >
+            {videoCount} {videoCount === 1 ? "video" : "videos"}
+          </Text>
+        ) : null}
+      </Reanimated.View>
+      {showSortButton ? (
+        <Pressable
+          onPress={onOpenSort}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 3,
+            marginLeft: 12,
+            opacity: pressed ? 0.65 : 1,
+          })}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Inter_600SemiBold",
+              color: WARM_MUTED,
+            }}
+          >
+            {activeSortLabel}
+          </Text>
+          <ChevronDown size={14} color={WARM_MUTED} strokeWidth={2.5} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function LibrarySearchField({ value, onChangeText, reduceMotion }) {
+  const focusProgress = useSharedValue(0);
+
+  const handleFocus = () => {
+    if (reduceMotion) {
+      focusProgress.value = 1;
+      return;
+    }
+    focusProgress.value = withTiming(1, {
+      duration: SEARCH_FOCUS_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  };
+
+  const handleBlur = () => {
+    if (reduceMotion) {
+      focusProgress.value = 0;
+      return;
+    }
+    focusProgress.value = withTiming(0, {
+      duration: SEARCH_BLUR_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  };
+
+  const containerStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        scale: reduceMotion
+          ? 1
+          : interpolate(focusProgress.value, [0, 1], [1, SEARCH_EXPAND_SCALE]),
+      },
+    ],
+    borderColor: interpolateColor(
+      focusProgress.value,
+      [0, 1],
+      [LIBRARY_SOFT_OUTLINE, LIBRARY_SOFT_OUTLINE_FOCUS],
+    ),
+  }));
+
+  const placeholderStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(focusProgress.value, [0, 1], [1, 0.38]),
+  }));
+
+  return (
+    <Reanimated.View
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: WARM_INPUT,
+          borderRadius: 18,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          gap: 10,
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+        containerStyle,
+      ]}
+    >
+      <RecallActionIcon name="search" size={17} />
+      <View style={{ flex: 1, justifyContent: "center" }}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder=""
+          style={{
+            flex: 1,
+            fontSize: 15,
+            fontFamily: "Inter_400Regular",
+            color: WARM_TEXT,
+            padding: 0,
+          }}
+          selectionColor={SEARCH_CURSOR}
+          cursorColor={SEARCH_CURSOR}
+          returnKeyType="search"
+        />
+        {value.length === 0 ? (
+          <Reanimated.Text
+            pointerEvents="none"
+            style={[
+              {
+                position: "absolute",
+                left: 0,
+                right: 0,
+                fontSize: 15,
+                fontFamily: "Inter_400Regular",
+                color: SEARCH_PLACEHOLDER,
+              },
+              placeholderStyle,
+            ]}
+          >
+            Search your saves...
+          </Reanimated.Text>
+        ) : null}
+      </View>
+      {value.length > 0 ? (
+        <Pressable onPress={() => onChangeText("")}>
+          <View
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: GREY_MID,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: "700",
+                color: WHITE,
+                lineHeight: 12,
+              }}
+            >
+              ✕
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
+    </Reanimated.View>
+  );
+}
+
+function CollectionCardPressShell({
+  onPress,
+  reduceMotion,
+  shellStyle,
+  pressableStyle,
+  children,
+}) {
+  const pressProgress = useSharedValue(0);
+
+  const handlePressIn = () => {
+    if (reduceMotion) {
+      pressProgress.value = 1;
+      return;
+    }
+    pressProgress.value = withSpring(1, COLLECTION_CARD_SPRING);
+  };
+
+  const handlePressOut = () => {
+    if (reduceMotion) {
+      pressProgress.value = 0;
+      return;
+    }
+    pressProgress.value = withSpring(0, COLLECTION_CARD_SPRING);
+  };
+
+  const animatedShellStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: reduceMotion
+          ? 0
+          : interpolate(pressProgress.value, [0, 1], [0, -COLLECTION_CARD_LIFT]),
+      },
+      {
+        scale: reduceMotion
+          ? 1
+          : interpolate(
+              pressProgress.value,
+              [0, 1],
+              [1, COLLECTION_CARD_PRESS_SCALE],
+            ),
+      },
+    ],
+    shadowColor: "#8D7A68",
+    shadowOpacity: interpolate(pressProgress.value, [0, 1], [0.07, 0.13]),
+    shadowRadius: interpolate(pressProgress.value, [0, 1], [18, 24]),
+    shadowOffset: {
+      width: 0,
+      height: interpolate(pressProgress.value, [0, 1], [5, 10]),
+    },
+    elevation: interpolate(pressProgress.value, [0, 1], [2, 5]),
+  }));
+
+  return (
+    <Reanimated.View style={[animatedShellStyle, shellStyle]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={pressableStyle}
+      >
+        {children}
+      </Pressable>
+    </Reanimated.View>
+  );
+}
+
+function CollectionGridCard({ item, onPress, reduceMotion }) {
   const hasPreviews = item.previews && item.previews.length > 0;
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }], flex: 1 }}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={handleIn}
-        onPressOut={handleOut}
-        style={{
-          backgroundColor: WHITE,
-          borderRadius: 22,
-          overflow: "hidden",
-          shadowColor: BLACK,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.06,
-          shadowRadius: 14,
-          elevation: 3,
-        }}
-      >
+    <CollectionCardPressShell
+      onPress={onPress}
+      reduceMotion={reduceMotion}
+      shellStyle={{ flex: 1 }}
+      pressableStyle={{
+        backgroundColor: WARM_SURFACE,
+        borderRadius: 20,
+        overflow: "hidden",
+      }}
+    >
         {/* Thumbnail strip */}
         <View
           style={{
@@ -239,27 +793,23 @@ function CollectionGridCard({ item, onPress }) {
         </View>
 
         {/* Info */}
-        <View style={{ padding: 12, gap: 3 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={{ fontSize: 14 }}>{item.emoji}</Text>
-            <Text
-              style={{
-                fontSize: 13,
-                fontFamily: "Inter_600SemiBold",
-                color: BLACK,
-                flex: 1,
-                letterSpacing: -0.2,
-              }}
-              numberOfLines={1}
-            >
-              {item.name}
-            </Text>
-          </View>
+        <View style={{ padding: 13, gap: 4 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Inter_600SemiBold",
+              color: WARM_TEXT,
+              letterSpacing: -0.2,
+            }}
+            numberOfLines={1}
+          >
+            {item.name}
+          </Text>
           <Text
             style={{
               fontSize: 11,
               fontFamily: "Inter_400Regular",
-              color: GREY_TEXT,
+              color: WARM_MUTED,
             }}
           >
             {item.videoCount === 0
@@ -267,125 +817,111 @@ function CollectionGridCard({ item, onPress }) {
               : `${item.videoCount} video${item.videoCount !== 1 ? "s" : ""}`}
           </Text>
         </View>
-      </Pressable>
-    </Animated.View>
+    </CollectionCardPressShell>
   );
 }
 
 // ─── Library card ──────────────────────────────────────────────────────────────
-function LibraryCard({ item, onPress, isHighlighted = false }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const handleIn = () =>
-    Animated.spring(scaleAnim, {
-      toValue: 0.975,
-      useNativeDriver: true,
-      tension: 200,
-      friction: 10,
-    }).start();
-  const handleOut = () =>
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 200,
-      friction: 8,
-    }).start();
+function LibraryCard({
+  item,
+  onPress,
+  isSelected = false,
+  selectionMode = false,
+  reorderLayout,
+}) {
+  const scale = useSharedValue(1);
 
-  const isForgotten = item.savedWeeks >= 4;
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    scale.value = withTiming(0.98, { duration: 120 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withTiming(1, { duration: 150 });
+  };
 
   return (
-    <Animated.View
-      style={{ transform: [{ scale: scaleAnim }], marginBottom: 12 }}
+    <Reanimated.View
+      layout={reorderLayout}
+      style={[{ marginBottom: 14 }, cardAnimatedStyle]}
     >
       <Pressable
         onPress={onPress}
-        onPressIn={handleIn}
-        onPressOut={handleOut}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         style={{
-          backgroundColor: WHITE,
+          backgroundColor: WARM_SURFACE,
           borderRadius: 24,
-          borderWidth: isHighlighted ? 1.5 : 0,
-          borderColor: isHighlighted ? "rgba(0,0,0,0.1)" : "transparent",
           flexDirection: "row",
-          alignItems: "center",
-          minHeight: 116,
-          shadowColor: BLACK,
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.06,
+          alignItems: "flex-start",
+          minHeight: 138,
+          padding: 6,
+          shadowColor: "#8D7A68",
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.07,
           shadowRadius: 18,
-          elevation: 3,
-          overflow: "hidden",
+          elevation: 2,
+          borderWidth: selectionMode && isSelected ? 1.5 : 0,
+          borderColor: selectionMode && isSelected ? WARM_ACCENT : "transparent",
         }}
       >
         {/* Thumbnail */}
-        <View style={{ paddingLeft: 12 }}>
+        <View>
           <VideoThumbnail
             thumbnailUrl={item.thumbnail}
+            videoUrl={item.videoUrl}
+            videoId={item.id}
             platform={item.platform}
             variant="libraryList"
-          >
-            <View style={{ position: "absolute", bottom: 8, left: 8 }}>
-              <Text style={{ fontSize: 14 }}>{item.categoryEmoji}</Text>
-            </View>
-          </VideoThumbnail>
+            style={{
+              width: 124,
+              height: 126,
+              borderRadius: 20,
+            }}
+            imageStyle={{ transform: [{ scale: 1.24 }] }}
+          />
         </View>
 
         {/* Info */}
         <View
           style={{
             flex: 1,
-            minHeight: 116,
-            paddingVertical: 13,
-            paddingLeft: 14,
-            paddingRight: 14,
-            justifyContent: "space-between",
+            minWidth: 0,
+            minHeight: 126,
+            paddingLeft: 12,
+            paddingRight: 4,
+            paddingVertical: 6,
           }}
         >
-          <View style={{ marginBottom: 4 }}>
+          <View>
             <Text
               style={{
-                fontSize: 15,
-                fontFamily: "Inter_700Bold",
-                color: BLACK,
-                letterSpacing: -0.3,
+                fontSize: 13,
+                fontFamily: "Inter_600SemiBold",
+                color: WARM_TEXT,
+                letterSpacing: -0.15,
                 marginBottom: 2,
-                lineHeight: 19,
+                lineHeight: 16,
               }}
-              numberOfLines={2}
             >
-              {item.title}
+              {getDisplayTitle(item.title)}
             </Text>
             <Text
               style={{
-                fontSize: 11.5,
+                fontSize: 10.5,
                 fontFamily: "Inter_400Regular",
-                color: GREY_TEXT,
+                color: WARM_MUTED,
+                lineHeight: 13,
               }}
-              numberOfLines={1}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
             >
               {item.creator}
             </Text>
-            {isHighlighted ? (
-              <View
-                style={{
-                  alignSelf: "flex-start",
-                  marginTop: 8,
-                  backgroundColor: GREY_LIGHT,
-                  borderRadius: 10,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: "Inter_600SemiBold",
-                    color: BLACK,
-                  }}
-                >
-                  Just saved
-                </Text>
-              </View>
-            ) : null}
           </View>
 
           {/* Meta row */}
@@ -393,43 +929,40 @@ function LibraryCard({ item, onPress, isHighlighted = false }) {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
+              gap: 5,
+              marginTop: 4,
             }}
           >
             <Text
               style={{
-                fontSize: 12,
-                fontFamily: "Inter_500Medium",
-                color: isForgotten ? "#FF9500" : GREY_TEXT,
+                fontSize: 10,
+                fontFamily: "Inter_400Regular",
+                color: WARM_MUTED,
               }}
+              numberOfLines={1}
             >
               {timeAgo(item.savedWeeks)}
             </Text>
-            {item.hasReminder && (
+            {item.reminderEnabled && isActiveReminderSchedule(item) && (
               <>
                 <View
                   style={{
                     width: 3,
                     height: 3,
                     borderRadius: 1.5,
-                    backgroundColor: GREY_MID,
+                    backgroundColor: "#C9C0B6",
                   }}
                 />
-                <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                <Text
+                  style={{
+                  fontSize: 10,
+                    fontFamily: "Inter_400Regular",
+                    color: WARM_MUTED,
+                  }}
+                  numberOfLines={1}
                 >
-                  <Clock size={11} color={GREY_MID} />
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontFamily: "Inter_400Regular",
-                      color: GREY_TEXT,
-                    }}
-                  >
-                    {item.reminderTime}
-                  </Text>
-                </View>
+                  {item.reminderTime}
+                </Text>
               </>
             )}
           </View>
@@ -440,73 +973,78 @@ function LibraryCard({ item, onPress, isHighlighted = false }) {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
+              marginTop: "auto",
             }}
           >
-            {isForgotten ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  backgroundColor: "#FFF8F0",
-                  borderRadius: 10,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                }}
-              >
-                <RotateCcw size={10} color="#FF9500" />
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontFamily: "Inter_600SemiBold",
-                    color: "#FF9500",
-                  }}
-                >
-                  Revisit?
-                </Text>
-              </View>
-            ) : (
-              <View
-                style={{
-                  backgroundColor: GREY_LIGHT,
-                  borderRadius: 9,
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 10.5,
-                    fontFamily: "Inter_500Medium",
-                    color: GREY_TEXT,
-                  }}
-                >
-                  {item.category}
-                </Text>
-              </View>
-            )}
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: BLACK,
-                justifyContent: "center",
-                alignItems: "center",
+                backgroundColor: "#F3EEE8",
+                borderRadius: 8,
+                paddingHorizontal: 7,
+                paddingVertical: 3,
+                maxWidth: "75%",
               }}
             >
-              <Play size={11} color={WHITE} fill={WHITE} />
+              <Text
+                style={{
+                  fontSize: 9.5,
+                  fontFamily: "Inter_500Medium",
+                  color: WARM_MUTED,
+                }}
+                numberOfLines={1}
+              >
+                {item.category}
+              </Text>
+            </View>
+            <View
+              style={{
+                width: 25,
+                height: 25,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {selectionMode ? (
+                isSelected ? (
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      backgroundColor: WARM_TEXT,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Check size={13} color={WHITE} strokeWidth={2.5} />
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: LIBRARY_SOFT_OUTLINE,
+                      backgroundColor: WARM_SURFACE,
+                    }}
+                  />
+                )
+              ) : (
+                <ChevronRight size={19} color={WARM_TEXT} strokeWidth={2.1} />
+              )}
             </View>
           </View>
         </View>
       </Pressable>
-    </Animated.View>
+    </Reanimated.View>
   );
 }
 
 // ─── Main screen ───────────────────────────────────────────────────────────────
 export default function LibraryScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const router = useRouter();
   const params = useLocalSearchParams();
   const highlightId = Array.isArray(params.highlight)
@@ -531,11 +1069,17 @@ export default function LibraryScreen() {
   const reloadData = useRecallStore((s) => s.reloadData);
   const addCollection = useRecallStore((s) => s.addCollection);
   const setVideoCollections = useRecallStore((s) => s.setVideoCollections);
-  const openVideoDetail = (videoId) =>
+  const reduceMotion = useAppearanceStore((state) => state.reduceMotion);
+  const libraryReorderLayout = reduceMotion ? undefined : LIBRARY_REORDER_LAYOUT;
+  const openVideoDetail = (videoId) => {
     router.push({
       pathname: "/video-detail",
-      params: { id: videoId },
+      params: {
+        id: videoId,
+        fromLibrary: "1",
+      },
     });
+  };
   const ALL_SAVES = useMemo(
     () => storeVideos.filter((v) => !v.archived),
     [storeVideos],
@@ -603,7 +1147,47 @@ export default function LibraryScreen() {
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionEmoji, setNewCollectionEmoji] = useState("📌");
   const [newCollectionCoverType, setNewCollectionCoverType] = useState("icon");
-  const searchFocusAnim = useRef(new Animated.Value(0)).current;
+  const [selectedVideoIds, setSelectedVideoIds] = useState([]);
+  const [sortOption, setSortOption] = useState(getSessionLibrarySort);
+  const [showSortSheet, setShowSortSheet] = useState(false);
+  const categoryChipsEntranceDoneRef = useRef(false);
+  const categoryFilterTransition = useSharedValue(1);
+  const prevActiveCategoryRef = useRef("all");
+
+  useEffect(() => {
+    if (prevActiveCategoryRef.current === activeCategory) {
+      return;
+    }
+    prevActiveCategoryRef.current = activeCategory;
+
+    if (reduceMotion) {
+      categoryFilterTransition.value = 1;
+      return;
+    }
+
+    categoryFilterTransition.value = 0;
+    categoryFilterTransition.value = withTiming(1, {
+      duration: CATEGORY_FILTER_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [activeCategory, categoryFilterTransition, reduceMotion]);
+
+  const categoryResultsAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion
+      ? 1
+      : interpolate(categoryFilterTransition.value, [0, 1], [0.62, 1]),
+    transform: [
+      {
+        translateY: reduceMotion
+          ? 0
+          : interpolate(
+              categoryFilterTransition.value,
+              [0, 1],
+              [CATEGORY_FILTER_SLIDE, 0],
+            ),
+      },
+    ],
+  }));
 
   useEffect(() => {
     if (!highlightId && !addToCollectionId) return;
@@ -613,23 +1197,11 @@ export default function LibraryScreen() {
     setSearchQuery("");
   }, [addToCollectionId, highlightId]);
 
-  const handleSearchFocus = () =>
-    Animated.timing(searchFocusAnim, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: false,
-    }).start();
-  const handleSearchBlur = () =>
-    Animated.timing(searchFocusAnim, {
-      toValue: 0,
-      duration: 180,
-      useNativeDriver: false,
-    }).start();
-
-  const searchBorderColor = searchFocusAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["rgba(0,0,0,0)", "rgba(0,0,0,0.12)"],
-  });
+  useEffect(() => {
+    if (!addToCollectionId) {
+      setSelectedVideoIds([]);
+    }
+  }, [addToCollectionId]);
 
   const categoryFilters = useMemo(() => {
     const builtInIds = new Set(BASE_CATEGORY_FILTERS.map((category) => category.id));
@@ -659,11 +1231,12 @@ export default function LibraryScreen() {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (s) =>
-          s.title.toLowerCase().includes(q) ||
-          s.creator.toLowerCase().includes(q) ||
-          s.category.toLowerCase().includes(q),
-        );
+          (s.title ?? "").toLowerCase().includes(q) ||
+          (s.creator ?? "").toLowerCase().includes(q) ||
+          (s.category ?? "").toLowerCase().includes(q),
+      );
     }
+    list = sortLibraryVideos(list, sortOption);
     if (highlightId) {
       list = [...list].sort((a, b) => {
         if (a.id === highlightId) return -1;
@@ -672,15 +1245,25 @@ export default function LibraryScreen() {
       });
     }
     return list;
-  }, [activeCategory, searchQuery, librarySource, highlightId]);
+  }, [activeCategory, searchQuery, librarySource, highlightId, sortOption]);
+
+  const handleSelectSort = (nextSort) => {
+    setSessionLibrarySort(nextSort);
+    setSortOption(nextSort);
+  };
+
+  const activeSortLabel =
+    LIBRARY_SORT_OPTIONS.find((option) => option.id === sortOption)?.label ??
+    "Newest saved";
 
   // Live stats from store
   const withReminders = ALL_SAVES.filter(
-    (s) => s.hasReminder && s.reminderEnabled,
+    (s) => s.reminderEnabled && isActiveReminderSchedule(s),
   ).length;
-  const oldSaves = ALL_SAVES.filter(
-    (s) => daysAgoFromISO(s.savedAt) >= 14 && !s.lastOpenedAt,
-  ).length;
+  const worthRevisitingCount = useMemo(
+    () => getWorthRevisitingCount(ALL_SAVES),
+    [ALL_SAVES],
+  );
   const saveCount = ALL_SAVES.length;
   const savedVideosLabel = `${saveCount} ${saveCount === 1 ? "video" : "videos"} saved`;
   const isEmptyLibrary = saveCount === 0;
@@ -708,6 +1291,12 @@ export default function LibraryScreen() {
   const selectionCountLabel = `${librarySource.length} ${
     librarySource.length === 1 ? "video" : "videos"
   } available`;
+  const addToCollectionSelectionLabel =
+    selectedVideoIds.length === 0
+      ? selectionCountLabel
+      : `${selectedVideoIds.length} selected`;
+  const collectionPreviewCardWidth =
+    (screenWidth - LIBRARY_BODY_PADDING * 2 - LIBRARY_PREVIEW_GAP) / 2;
 
   const openCreateCollectionModal = () => {
     setNewCollectionName("");
@@ -729,6 +1318,11 @@ export default function LibraryScreen() {
       coverImageUrl: null,
     });
 
+    if (collection?.blockedByPaywall) {
+      setShowNewCollectionModal(false);
+      return;
+    }
+
     if (!collection?.id) {
       return;
     }
@@ -737,15 +1331,36 @@ export default function LibraryScreen() {
     setActiveView("collections");
   };
 
-  const handleSelectVideoForCollection = async (video) => {
+  const toggleVideoSelection = (video) => {
     if (!addToCollection) {
       return;
     }
 
-    const nextCollectionIds = Array.from(
-      new Set([...(video.collections ?? []), addToCollection.id]),
+    setSelectedVideoIds((current) =>
+      current.includes(video.id)
+        ? current.filter((id) => id !== video.id)
+        : [...current, video.id],
     );
-    await setVideoCollections(video.id, nextCollectionIds);
+  };
+
+  const handleDoneAddToCollection = async () => {
+    if (!addToCollection || selectedVideoIds.length === 0) {
+      return;
+    }
+
+    for (const videoId of selectedVideoIds) {
+      const video = librarySource.find((entry) => entry.id === videoId);
+      if (!video) {
+        continue;
+      }
+
+      const nextCollectionIds = Array.from(
+        new Set([...(video.collections ?? []), addToCollection.id]),
+      );
+      await setVideoCollections(video.id, nextCollectionIds);
+    }
+
+    setSelectedVideoIds([]);
     router.replace({
       pathname: "/collection-detail",
       params: { id: addToCollection.id },
@@ -753,6 +1368,8 @@ export default function LibraryScreen() {
   };
 
   const handleExitAddToCollectionMode = () => {
+    setSelectedVideoIds([]);
+
     if (!addToCollection) {
       router.replace("/(tabs)/saved");
       return;
@@ -802,7 +1419,7 @@ export default function LibraryScreen() {
                 gap: 8,
               }}
             >
-              <Bookmark size={21} color="#17130F" strokeWidth={1.8} />
+              <RecallSavedContentIcon name="bookmark" size={21} />
               <Text
                 style={{
                   fontSize: 25,
@@ -815,30 +1432,6 @@ export default function LibraryScreen() {
               </Text>
             </View>
 
-            <Pressable
-              onPress={() => router.push("/(tabs)/profile")}
-              accessibilityLabel="Open profile"
-              style={({ pressed }) => ({
-                position: "absolute",
-                right: 0,
-                width: 38,
-                height: 38,
-                borderRadius: 19,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed ? "#2A2A2A" : "#111111",
-              })}
-            >
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontFamily: "Georgia",
-                  color: WHITE,
-                }}
-              >
-                R
-              </Text>
-            </Pressable>
           </View>
 
           <View
@@ -891,7 +1484,7 @@ export default function LibraryScreen() {
                 minWidth: 150,
                 height: 48,
                 borderRadius: 24,
-                backgroundColor: pressed ? "#2A2A2A" : "#111111",
+                backgroundColor: pressed ? GREY_LIGHT : BLACK,
                 paddingHorizontal: 20,
                 flexDirection: "row",
                 alignItems: "center",
@@ -915,6 +1508,39 @@ export default function LibraryScreen() {
               </Text>
               <Plus size={17} color={WHITE} strokeWidth={2} />
             </Pressable>
+
+            <Text
+              style={{
+                marginTop: 18,
+                maxWidth: 280,
+                fontSize: 13,
+                lineHeight: 19,
+                fontFamily: "Inter_400Regular",
+                color: "#77716B",
+                textAlign: "center",
+              }}
+            >
+              {SHARE_EXTENSION_EMPTY_NOTE}
+            </Text>
+
+            <Pressable
+              onPress={() => router.push("/saving-from-other-apps")}
+              style={({ pressed }) => ({
+                marginTop: 10,
+                paddingVertical: 6,
+                opacity: pressed ? 0.65 : 1,
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontFamily: "Inter_600SemiBold",
+                  color: "#17130F",
+                }}
+              >
+                How sharing works
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
       </View>
@@ -935,33 +1561,29 @@ export default function LibraryScreen() {
       {/* ── STICKY HEADER ─────────────────────────────────────────── */}
       <View
         style={{
-          backgroundColor: WHITE,
-          paddingTop: insets.top + 12,
-          paddingBottom: 16,
+          backgroundColor: BG,
+          paddingTop: insets.top + 16,
+          paddingBottom: 12,
           paddingHorizontal: 20,
-          shadowColor: BLACK,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.04,
-          shadowRadius: 10,
-          elevation: 3,
         }}
       >
         {/* Title row — unchanged */}
         <View
           style={{
             flexDirection: "row",
-            alignItems: "flex-end",
+            alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 14,
+            marginBottom: 18,
           }}
         >
           <View>
             <Text
               style={{
-                fontSize: 28,
-                fontFamily: "Inter_700Bold",
-                color: BLACK,
-                letterSpacing: -0.8,
+                fontSize: 38,
+                lineHeight: 43,
+                fontFamily: "Georgia",
+                color: WARM_TEXT,
+                letterSpacing: -0.9,
               }}
             >
               Library
@@ -970,31 +1592,58 @@ export default function LibraryScreen() {
               style={{
                 fontSize: 13,
                 fontFamily: "Inter_400Regular",
-                color: GREY_TEXT,
-                marginTop: 2,
+                color: WARM_MUTED,
+                marginTop: 3,
               }}
             >
               {isAddToCollectionMode
-                ? selectionCountLabel
+                ? addToCollectionSelectionLabel
                 : activeView === "saves"
                 ? savedVideosLabel
                 : `${collectionCards.length} collections`}
             </Text>
           </View>
-          {activeView === "collections" ? (
+          {isAddToCollectionMode ? (
+            <Pressable
+              onPress={handleDoneAddToCollection}
+              disabled={selectedVideoIds.length === 0}
+              style={({ pressed }) => ({
+                borderRadius: 18,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                backgroundColor:
+                  selectedVideoIds.length === 0
+                    ? "#E8E2DA"
+                    : pressed
+                      ? "#332B25"
+                      : WARM_TEXT,
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontFamily: "Inter_600SemiBold",
+                  color:
+                    selectedVideoIds.length === 0 ? WARM_MUTED : WHITE,
+                }}
+              >
+                Done
+              </Text>
+            </Pressable>
+          ) : activeView === "collections" ? (
             <Pressable
               onPress={openCreateCollectionModal}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 6,
-                backgroundColor: pressed ? "#1A1A1A" : BLACK,
-                borderRadius: 14,
+                backgroundColor: pressed ? "#332B25" : WARM_TEXT,
+                borderRadius: 18,
                 paddingHorizontal: 14,
-                paddingVertical: 9,
+                paddingVertical: 10,
               })}
             >
-              <Plus size={14} color={WHITE} />
+              <RecallSavedContentIcon name="folder-plus" size={14} />
               <Text
                 style={{
                   fontSize: 13,
@@ -1003,29 +1652,6 @@ export default function LibraryScreen() {
                 }}
               >
                 New
-              </Text>
-            </Pressable>
-          ) : showSortButton ? (
-            <Pressable
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                backgroundColor: pressed ? "#E5E5EA" : GREY_LIGHT,
-                borderRadius: 14,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
-              })}
-            >
-              <SlidersHorizontal size={14} color={GREY_TEXT} />
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontFamily: "Inter_600SemiBold",
-                  color: GREY_TEXT,
-                }}
-              >
-                Sort
               </Text>
             </Pressable>
           ) : (
@@ -1042,8 +1668,10 @@ export default function LibraryScreen() {
               justifyContent: "space-between",
               gap: 12,
               marginBottom: 14,
-              backgroundColor: GREY_LIGHT,
+              backgroundColor: WARM_SURFACE,
               borderRadius: 16,
+              borderWidth: 1,
+              borderColor: WARM_BORDER,
               paddingHorizontal: 16,
               paddingVertical: 14,
             }}
@@ -1053,7 +1681,7 @@ export default function LibraryScreen() {
                 style={{
                   fontSize: 14,
                   fontFamily: "Inter_600SemiBold",
-                  color: BLACK,
+                  color: WARM_TEXT,
                 }}
               >
                 Add to {addToCollection?.name}
@@ -1063,11 +1691,11 @@ export default function LibraryScreen() {
                   marginTop: 4,
                   fontSize: 12,
                   fontFamily: "Inter_400Regular",
-                  color: GREY_TEXT,
+                  color: WARM_MUTED,
                   lineHeight: 18,
                 }}
               >
-                Tap a saved video below to add it to this collection.
+                Select videos below, then tap Done.
               </Text>
             </View>
             <Pressable onPress={handleExitAddToCollectionMode} hitSlop={8}>
@@ -1075,7 +1703,7 @@ export default function LibraryScreen() {
                 style={{
                   fontSize: 13,
                   fontFamily: "Inter_600SemiBold",
-                  color: GREY_TEXT,
+                  color: WARM_MUTED,
                 }}
               >
                 Cancel
@@ -1088,10 +1716,12 @@ export default function LibraryScreen() {
           <View
             style={{
               flexDirection: "row",
-              backgroundColor: GREY_LIGHT,
-              borderRadius: 14,
-              padding: 3,
+              backgroundColor: "#EEE8E0",
+              borderRadius: 18,
+              padding: 4,
               marginBottom: 14,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: LIBRARY_SOFT_OUTLINE,
             }}
           >
             {[
@@ -1105,13 +1735,13 @@ export default function LibraryScreen() {
                   onPress={() => setActiveView(view.key)}
                   style={{
                     flex: 1,
-                    paddingVertical: 9,
-                    borderRadius: 11,
-                    backgroundColor: active ? WHITE : "transparent",
+                    paddingVertical: 10,
+                    borderRadius: 14,
+                    backgroundColor: active ? WARM_SURFACE : "transparent",
                     alignItems: "center",
                     shadowColor: active ? "#000" : "transparent",
                     shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: active ? 0.08 : 0,
+                    shadowOpacity: active ? 0.05 : 0,
                     shadowRadius: 4,
                     elevation: active ? 2 : 0,
                   }}
@@ -1122,7 +1752,7 @@ export default function LibraryScreen() {
                       fontFamily: active
                         ? "Inter_600SemiBold"
                         : "Inter_400Regular",
-                      color: active ? BLACK : GREY_TEXT,
+                      color: active ? WARM_TEXT : WARM_MUTED,
                     }}
                   >
                     {view.label}
@@ -1136,162 +1766,40 @@ export default function LibraryScreen() {
         {/* Search bar — only show in saves view */}
         {showSearchBar && (
           <>
-            <Animated.View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: GREY_LIGHT,
-                borderRadius: 14,
-                paddingHorizontal: 14,
-                paddingVertical: 11,
-                gap: 10,
-                borderWidth: 1.5,
-                borderColor: searchBorderColor,
-              }}
-            >
-              <Search size={16} color={GREY_MID} />
-              <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onFocus={handleSearchFocus}
-                onBlur={handleSearchBlur}
-                placeholder="Search your saves..."
-                placeholderTextColor={GREY_MID}
-                style={{
-                  flex: 1,
-                  fontSize: 15,
-                  fontFamily: "Inter_400Regular",
-                  color: BLACK,
-                  padding: 0,
-                }}
-                returnKeyType="search"
-              />
-              {searchQuery.length > 0 && (
-                <Pressable onPress={() => setSearchQuery("")}>
-                  <View
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      backgroundColor: GREY_MID,
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: "700",
-                        color: WHITE,
-                        lineHeight: 12,
-                      }}
-                    >
-                      ✕
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
-            </Animated.View>
+            <LibrarySearchField
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              reduceMotion={reduceMotion}
+            />
 
             {/* Category chips */}
             {showCategoryChips ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingTop: 14 }}
-              style={{
-                flexGrow: 0,
-                marginHorizontal: -20,
-                paddingHorizontal: 20,
-              }}
-            >
-              {categoryFilters.map((cat) => {
-                const active = activeCategory === cat.id;
-                return (
-                  <Pressable
-                    key={cat.id}
-                    onPress={() => setActiveCategory(cat.id)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 5,
-                      paddingHorizontal: 14,
-                      paddingVertical: 8,
-                      borderRadius: 32,
-                      backgroundColor: active ? BLACK : GREY_LIGHT,
-                    }}
-                  >
-                    {cat.emoji && (
-                      <Text style={{ fontSize: 12 }}>{cat.emoji}</Text>
-                    )}
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontFamily: active
-                          ? "Inter_600SemiBold"
-                          : "Inter_400Regular",
-                        color: active ? WHITE : "#3C3C43",
-                      }}
-                    >
-                      {cat.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+              <CategoryFilterChipRow
+                categoryFilters={categoryFilters}
+                activeCategory={activeCategory}
+                onSelectCategory={setActiveCategory}
+                reduceMotion={reduceMotion}
+                chipListPaddingTop={14}
+                entranceDoneRef={categoryChipsEntranceDoneRef}
+              />
             ) : null}
           </>
         )}
         {!showSearchBar && showCategoryChips ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8 }}
-            style={{
-              flexGrow: 0,
-              marginHorizontal: -20,
-              paddingHorizontal: 20,
-            }}
-          >
-            {categoryFilters.map((cat) => {
-              const active = activeCategory === cat.id;
-              return (
-                <Pressable
-                  key={cat.id}
-                  onPress={() => setActiveCategory(cat.id)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 5,
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
-                    borderRadius: 32,
-                    backgroundColor: active ? BLACK : GREY_LIGHT,
-                  }}
-                >
-                  {cat.emoji && <Text style={{ fontSize: 12 }}>{cat.emoji}</Text>}
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontFamily: active
-                        ? "Inter_600SemiBold"
-                        : "Inter_400Regular",
-                      color: active ? WHITE : "#3C3C43",
-                    }}
-                  >
-                    {cat.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <CategoryFilterChipRow
+            categoryFilters={categoryFilters}
+            activeCategory={activeCategory}
+            onSelectCategory={setActiveCategory}
+            reduceMotion={reduceMotion}
+            entranceDoneRef={categoryChipsEntranceDoneRef}
+          />
         ) : null}
       </View>
 
       {/* ── BODY ──────────────────────────────────────────────────── */}
       <View
         style={{
-          paddingTop: 20,
+          paddingTop: 14,
           paddingHorizontal: 20,
         }}
       >
@@ -1311,14 +1819,17 @@ export default function LibraryScreen() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 marginBottom: 12,
+                borderLeftWidth: 3,
+                borderLeftColor: WARM_ACCENT,
+                paddingLeft: 12,
               }}
             >
               <Text
                 style={{
                   fontSize: 17,
                   fontFamily: "Inter_700Bold",
-                  color: BLACK,
-                  letterSpacing: -0.4,
+                  color: WARM_TEXT,
+                  letterSpacing: -0.2,
                 }}
               >
                 Collections
@@ -1328,7 +1839,7 @@ export default function LibraryScreen() {
                   style={{
                     fontSize: 13,
                     fontFamily: "Inter_600SemiBold",
-                    color: GREY_TEXT,
+                    color: WARM_MUTED,
                   }}
                 >
                   See all
@@ -1338,11 +1849,14 @@ export default function LibraryScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 10 }}
-              style={{ marginHorizontal: -20, paddingHorizontal: 20 }}
+              contentContainerStyle={{
+                gap: LIBRARY_PREVIEW_GAP,
+                paddingHorizontal: LIBRARY_BODY_PADDING,
+              }}
+              style={{ marginHorizontal: -LIBRARY_BODY_PADDING }}
             >
         {collectionCards.map((collection) => (
-                <Pressable
+                <CollectionCardPressShell
                   key={collection.id}
                   onPress={() =>
                     router.push({
@@ -1350,24 +1864,20 @@ export default function LibraryScreen() {
                       params: { id: collection.id },
                     })
                   }
-                  style={{
-                    width: 150,
-                    backgroundColor: WHITE,
+                  reduceMotion={reduceMotion}
+                  shellStyle={{ width: collectionPreviewCardWidth }}
+                  pressableStyle={{
+                    backgroundColor: WARM_SURFACE,
                     borderRadius: 20,
                     padding: 12,
-                    shadowColor: BLACK,
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.05,
-                    shadowRadius: 14,
-                    elevation: 2,
                   }}
                 >
-                  <View style={{ height: 54, marginBottom: 10 }}>
+                  <View style={{ height: 54, marginBottom: 10, width: "100%" }}>
                     {collection.previews.length > 0 ? (
                       <Image
                         source={{ uri: collection.previews[0] }}
                         style={{
-                          width: 94,
+                          width: "100%",
                           height: 54,
                           borderRadius: 14,
                         }}
@@ -1376,10 +1886,10 @@ export default function LibraryScreen() {
                     ) : (
                       <View
                         style={{
-                          width: 54,
+                          width: "100%",
                           height: 54,
                           borderRadius: 14,
-                          backgroundColor: GREY_LIGHT,
+                          backgroundColor: "#F4EEE7",
                           justifyContent: "center",
                           alignItems: "center",
                         }}
@@ -1392,7 +1902,7 @@ export default function LibraryScreen() {
                     style={{
                       fontSize: 14,
                       fontFamily: "Inter_700Bold",
-                      color: BLACK,
+                      color: WARM_TEXT,
                     }}
                     numberOfLines={1}
                   >
@@ -1403,13 +1913,13 @@ export default function LibraryScreen() {
                       marginTop: 3,
                       fontSize: 12,
                       fontFamily: "Inter_400Regular",
-                      color: GREY_TEXT,
+                      color: WARM_MUTED,
                     }}
                   >
                     {collection.videoCount} video
                     {collection.videoCount === 1 ? "" : "s"}
                   </Text>
-                </Pressable>
+                </CollectionCardPressShell>
               ))}
             </ScrollView>
           </View>
@@ -1425,14 +1935,17 @@ export default function LibraryScreen() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 marginBottom: 18,
+                borderLeftWidth: 3,
+                borderLeftColor: WARM_ACCENT,
+                paddingLeft: 12,
               }}
             >
               <Text
                 style={{
                   fontSize: 17,
                   fontFamily: "Inter_700Bold",
-                  color: BLACK,
-                  letterSpacing: -0.4,
+                  color: WARM_TEXT,
+                  letterSpacing: -0.2,
                 }}
               >
                 Your Collections
@@ -1441,7 +1954,7 @@ export default function LibraryScreen() {
                 style={{
                   fontSize: 13,
                   fontFamily: "Inter_400Regular",
-                  color: GREY_TEXT,
+                  color: WARM_MUTED,
                 }}
               >
                 {collectionCards.length} total
@@ -1456,6 +1969,15 @@ export default function LibraryScreen() {
                 text="Group saves by recipes, workouts, travel ideas, inspiration, or anything else."
                 ctaLabel="Create Collection"
                 onPress={openCreateCollectionModal}
+                style={{
+                  backgroundColor: WARM_SURFACE,
+                  borderWidth: 0,
+                  shadowColor: "#8D7A68",
+                  shadowOffset: { width: 0, height: 5 },
+                  shadowOpacity: 0.07,
+                  shadowRadius: 18,
+                  elevation: 2,
+                }}
               />
             )}
             {collectionCards.length > 0 &&
@@ -1474,6 +1996,7 @@ export default function LibraryScreen() {
                         params: { id: collectionCards[rowIndex * 2].id },
                       })
                     }
+                    reduceMotion={reduceMotion}
                   />
                   {collectionCards[rowIndex * 2 + 1] ? (
                     <CollectionGridCard
@@ -1484,6 +2007,7 @@ export default function LibraryScreen() {
                           params: { id: collectionCards[rowIndex * 2 + 1].id },
                         })
                       }
+                      reduceMotion={reduceMotion}
                     />
                   ) : (
                     /* New Collection placeholder card */
@@ -1491,15 +2015,17 @@ export default function LibraryScreen() {
                       onPress={openCreateCollectionModal}
                       style={{
                         flex: 1,
-                        backgroundColor: WHITE,
+                        backgroundColor: WARM_SURFACE,
                         borderRadius: 22,
                         height: 140,
-                        borderWidth: 1.5,
-                        borderStyle: "dashed",
-                        borderColor: GREY_MID,
                         justifyContent: "center",
                         alignItems: "center",
                         gap: 8,
+                        shadowColor: "#8D7A68",
+                        shadowOffset: { width: 0, height: 5 },
+                        shadowOpacity: 0.07,
+                        shadowRadius: 18,
+                        elevation: 2,
                       }}
                     >
                       <View
@@ -1507,18 +2033,18 @@ export default function LibraryScreen() {
                           width: 34,
                           height: 34,
                           borderRadius: 17,
-                          backgroundColor: GREY_LIGHT,
+                          backgroundColor: "#F4EEE7",
                           justifyContent: "center",
                           alignItems: "center",
                         }}
                       >
-                        <Plus size={16} color={GREY_TEXT} />
+                        <RecallSavedContentIcon name="folder-plus" size={16} />
                       </View>
                       <Text
                         style={{
                           fontSize: 12,
                           fontFamily: "Inter_500Medium",
-                          color: GREY_TEXT,
+                          color: WARM_MUTED,
                           textAlign: "center",
                         }}
                       >
@@ -1535,8 +2061,10 @@ export default function LibraryScreen() {
             <View
               style={{
                 marginTop: 8,
-                backgroundColor: "#F7F7F5",
+                backgroundColor: WARM_SURFACE,
                 borderRadius: 16,
+                borderWidth: 1,
+                borderColor: WARM_BORDER,
                 padding: 16,
                 flexDirection: "row",
                 alignItems: "center",
@@ -1549,7 +2077,7 @@ export default function LibraryScreen() {
                   flex: 1,
                   fontSize: 13,
                   fontFamily: "Inter_400Regular",
-                  color: GREY_TEXT,
+                  color: WARM_MUTED,
                   lineHeight: 19,
                 }}
               >
@@ -1564,93 +2092,107 @@ export default function LibraryScreen() {
           <>
             {/* Quick stats */}
             {showStatsCards && (
-              <View style={{ flexDirection: "row", gap: 10, marginBottom: 24 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: LIBRARY_PREVIEW_GAP,
+                  marginBottom: 22,
+                }}
+              >
                 {[
                   {
                     value: withReminders,
                     label: "With reminders",
-                    bg: "#F0F4FF",
-                    color: "#1C64F2",
+                    detail:
+                      withReminders === 1
+                        ? "1 scheduled"
+                        : `${withReminders} scheduled`,
+                    onPress: () => router.push("/(tabs)/calendar"),
                   },
                   {
-                    value: oldSaves,
+                    value: worthRevisitingCount,
                     label: "Worth revisiting",
-                    bg: "#FFF8F0",
-                    color: "#FF9500",
+                    detail:
+                      worthRevisitingCount === 1
+                        ? "1 ready now"
+                        : `${worthRevisitingCount} ready now`,
+                    onPress: () => router.push("/worth-revisiting"),
                   },
                 ].map((stat) => (
-                  <View
+                  <Pressable
                     key={stat.label}
-                    style={{
+                    onPress={stat.onPress}
+                    style={({ pressed }) => ({
                       flex: 1,
-                      backgroundColor: stat.bg,
-                      borderRadius: 16,
-                      padding: 16,
+                      backgroundColor: WARM_SURFACE,
+                      borderRadius: 24,
+                      paddingHorizontal: 16,
+                      paddingTop: 8,
+                      paddingBottom: 8,
                       alignItems: "center",
-                      gap: 4,
-                    }}
+                      shadowColor: "#8D7A68",
+                      shadowOffset: { width: 0, height: 5 },
+                      shadowOpacity: 0.07,
+                      shadowRadius: 18,
+                      elevation: 2,
+                      opacity: pressed ? 0.94 : 1,
+                      transform: [{ scale: pressed ? 0.985 : 1 }],
+                    })}
                   >
                     <Text
                       style={{
-                        fontSize: 26,
+                        fontSize: 30,
                         fontFamily: "Inter_700Bold",
-                        color: stat.color,
-                        letterSpacing: -0.6,
+                        color: WARM_TEXT,
+                        letterSpacing: -0.8,
+                        marginTop: 2,
                       }}
                     >
                       {stat.value}
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
-                        fontFamily: "Inter_400Regular",
-                        color: stat.color,
+                        fontSize: 12,
+                        fontFamily: "Inter_500Medium",
+                        color: WARM_MUTED,
                         textAlign: "center",
-                        opacity: 0.8,
+                        marginTop: 2,
                       }}
                     >
                       {stat.label}
                     </Text>
-                  </View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "Inter_400Regular",
+                        color: GREY_TEXT,
+                        textAlign: "center",
+                        marginTop: 1,
+                        opacity: 0.55,
+                      }}
+                    >
+                      {stat.detail}
+                    </Text>
+                  </Pressable>
                 ))}
               </View>
             )}
 
-            {/* Section label */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 16,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 17,
-                  fontFamily: "Inter_700Bold",
-                  color: BLACK,
-                  letterSpacing: -0.4,
-                }}
-              >
-                {activeCategory === "all"
+            <LibraryCategorySectionHeader
+              title={
+                activeCategory === "all"
                   ? "All Saves"
                   : (categoryFilters.find((c) => c.id === activeCategory)?.label ??
-                    activeCategory)}
-              </Text>
-              {filtered.length > 0 && (
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontFamily: "Inter_400Regular",
-                    color: GREY_TEXT,
-                  }}
-                >
-                  {filtered.length} {filtered.length === 1 ? "video" : "videos"}
-                </Text>
-              )}
-            </View>
+                    activeCategory)
+              }
+              videoCount={filtered.length}
+              showSortButton={showSortButton}
+              activeSortLabel={activeSortLabel}
+              onOpenSort={() => setShowSortSheet(true)}
+              reduceMotion={reduceMotion}
+            />
 
+            <Reanimated.View style={categoryResultsAnimatedStyle}>
             {/* List or empty state */}
             {filtered.length === 0 ? (
               errorMessage ? null : (
@@ -1730,15 +2272,18 @@ export default function LibraryScreen() {
                 <LibraryCard
                   key={item.id}
                   item={adaptVideo(item)}
-                  isHighlighted={item.id === highlightId}
+                  reorderLayout={libraryReorderLayout}
+                  selectionMode={isAddToCollectionMode}
+                  isSelected={selectedVideoIds.includes(item.id)}
                   onPress={() =>
                     isAddToCollectionMode
-                      ? handleSelectVideoForCollection(item)
+                      ? toggleVideoSelection(item)
                       : openVideoDetail(item.id)
                   }
                 />
               ))
             )}
+            </Reanimated.View>
           </>
         )}
       </View>
@@ -1754,6 +2299,14 @@ export default function LibraryScreen() {
         onSelectEmoji={setNewCollectionEmoji}
         onSelectCoverType={setNewCollectionCoverType}
         onCreateCollection={handleCreateCollection}
+        insets={insets}
+      />
+
+      <LibrarySortSheet
+        visible={showSortSheet}
+        selectedSort={sortOption}
+        onSelect={handleSelectSort}
+        onClose={() => setShowSortSheet(false)}
         insets={insets}
       />
     </View>

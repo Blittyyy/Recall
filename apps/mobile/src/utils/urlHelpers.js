@@ -21,7 +21,7 @@ export function detectPlatform(input) {
     isHostOrSubdomain(hostname, "instagr.am")
   ) {
     const path = parsed?.pathname?.toLowerCase() ?? "";
-    return path.startsWith("/reel/") || path.startsWith("/p/")
+    return path.startsWith("/reel/") || path.startsWith("/reels/") || path.startsWith("/p/")
       ? "instagram"
       : null;
   }
@@ -61,8 +61,9 @@ export function normalizeVideoUrlForSave(input) {
     const kind = segments[0];
     const contentId = segments[1];
 
-    if ((kind === "reel" || kind === "p") && contentId) {
-      return `https://www.instagram.com/${kind}/${contentId}/`;
+    if ((kind === "reel" || kind === "reels" || kind === "p") && contentId) {
+      const normalizedKind = kind === "reels" ? "reel" : kind;
+      return `https://www.instagram.com/${normalizedKind}/${contentId}/`;
     }
   }
 

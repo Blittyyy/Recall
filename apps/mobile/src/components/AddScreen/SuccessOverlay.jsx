@@ -14,6 +14,7 @@ export function SuccessOverlay({
   onViewLibrary,
   onAddReminder,
   onSaveAnother,
+  onDone,
 }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.86)).current;
@@ -161,6 +162,27 @@ export function SuccessOverlay({
                 <SecondaryButton label="Save Another" onPress={onSaveAnother} />
               </View>
             )}
+
+            <Pressable
+              onPress={onDone}
+              style={({ pressed }) => ({
+                marginTop: 4,
+                borderRadius: 16,
+                paddingVertical: 14,
+                alignItems: "center",
+                backgroundColor: pressed ? "#E8E8ED" : "transparent",
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontFamily: "Inter_600SemiBold",
+                  color: GREY_TEXT,
+                }}
+              >
+                Done
+              </Text>
+            </Pressable>
           </View>
         </Animated.View>
       </Animated.View>

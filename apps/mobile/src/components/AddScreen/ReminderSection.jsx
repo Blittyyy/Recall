@@ -1,5 +1,6 @@
 import { View, Text, Switch, Pressable } from "react-native";
-import { Bell, ChevronRight } from "lucide-react-native";
+import { ChevronRight } from "lucide-react-native";
+import { RecallReminderIcon } from "../RecallReminderIcon";
 import { WHITE, BLACK, GREY_LIGHT, GREY_TEXT } from "../../constants/addScreen";
 
 export function ReminderSection({
@@ -20,19 +21,19 @@ export function ReminderSection({
       : "Optional - remind me later";
 
   return (
-    <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+    <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>
       <Pressable
         onPress={onOpenReminderSetup}
         style={{
           backgroundColor: WHITE,
-          borderRadius: 20,
-          shadowColor: BLACK,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.04,
-          shadowRadius: 10,
-          elevation: 1,
-          paddingHorizontal: 18,
-          paddingVertical: 16,
+          borderRadius: 26,
+          shadowColor: "#8D7A68",
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.07,
+          shadowRadius: 18,
+          elevation: 2,
+          paddingHorizontal: 20,
+          paddingVertical: 20,
         }}
       >
         <View
@@ -53,20 +54,20 @@ export function ReminderSection({
           >
             <View
               style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
+                width: 42,
+                height: 42,
+                borderRadius: 14,
                 backgroundColor: GREY_LIGHT,
                 justifyContent: "center",
                 alignItems: "center",
               }}
             >
-              <Bell size={16} color={GREY_TEXT} />
+              <RecallReminderIcon name="bell" size={19} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
                 style={{
-                  fontSize: 15,
+                  fontSize: 16,
                   fontFamily: "Inter_600SemiBold",
                   color: BLACK,
                 }}
@@ -75,7 +76,7 @@ export function ReminderSection({
               </Text>
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontFamily: "Inter_400Regular",
                   color: GREY_TEXT,
                   marginTop: 1,
@@ -91,7 +92,7 @@ export function ReminderSection({
             <Switch
               value={reminderEnabled}
               onValueChange={onToggleReminder}
-              trackColor={{ false: GREY_LIGHT, true: BLACK }}
+              trackColor={{ false: "#E9E2DA", true: BLACK }}
               thumbColor={WHITE}
             />
             <ChevronRight size={16} color={GREY_TEXT} />

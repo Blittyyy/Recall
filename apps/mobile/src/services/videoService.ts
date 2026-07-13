@@ -26,6 +26,7 @@ function toSavedVideoInsert(userId: string, video: any) {
     archived: video.archived ?? false,
     dismissed_from_resurfacing_until:
       video.dismissedFromResurfacingUntil ?? null,
+    availability_status: video.availabilityStatus ?? null,
   };
 }
 
@@ -53,6 +54,9 @@ function toSavedVideoUpdate(updates: any) {
   if (Object.hasOwn(updates, "dismissedFromResurfacingUntil")) {
     payload.dismissed_from_resurfacing_until =
       updates.dismissedFromResurfacingUntil;
+  }
+  if (Object.hasOwn(updates, "availabilityStatus")) {
+    payload.availability_status = updates.availabilityStatus ?? null;
   }
 
   return payload;

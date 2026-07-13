@@ -9,7 +9,8 @@ import {
   View,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import { Clock, RefreshCw, Trash2 } from "lucide-react-native";
+import { Trash2 } from "lucide-react-native";
+import { RecallReminderIcon } from "./RecallReminderIcon";
 import {
   BLACK,
   GREY_LIGHT,
@@ -21,6 +22,7 @@ import {
 } from "../constants/addScreen";
 import { VideoThumbnail } from "./VideoThumbnail";
 import { getCategoryMeta } from "../utils/resurfacing";
+import { getDisplayTitle } from "../utils/titleHelpers";
 
 const TIME_PRESETS = [
   { id: "morning", label: "Morning", time: "07:00 AM" },
@@ -401,12 +403,14 @@ export function ReminderSetupModal({
                   <View style={styles.contextCard}>
                     <VideoThumbnail
                       thumbnailUrl={videoContext.thumbnailUrl}
+                      videoUrl={videoContext.videoUrl}
+                      videoId={videoContext.id}
                       platform={videoContext.platform}
                       variant="libraryList"
                     />
                     <View style={{ flex: 1, justifyContent: "center" }}>
-                      <Text style={styles.contextTitle} numberOfLines={2}>
-                        {videoContext.title || "Saved video"}
+                      <Text style={styles.contextTitle}>
+                        {getDisplayTitle(videoContext.title, "Saved video")}
                       </Text>
                       <Text style={styles.contextPlatform}>{platformLabel}</Text>
                       {categoryMeta ? (
@@ -422,7 +426,7 @@ export function ReminderSetupModal({
                   <>
                     <View style={styles.sectionCard}>
                       <SectionLabel
-                        icon={<Clock size={13} color={GREY_TEXT} />}
+                        icon={<RecallReminderIcon name="today" size={13} />}
                         label="Reminder time"
                       />
                       <ChoiceGrid
@@ -448,7 +452,7 @@ export function ReminderSetupModal({
 
                     <View style={styles.sectionCard}>
                       <SectionLabel
-                        icon={<RefreshCw size={13} color={GREY_TEXT} />}
+                        icon={<RecallReminderIcon name="rediscovery" size={13} />}
                         label="Frequency"
                       />
                       <ChoiceGrid
@@ -504,7 +508,7 @@ export function ReminderSetupModal({
 
                     <View style={styles.sectionCard}>
                       <SectionLabel
-                        icon={<Clock size={13} color={GREY_TEXT} />}
+                        icon={<RecallReminderIcon name="later" size={13} />}
                         label="Remind me again if I don't open it"
                       />
                       <ChoiceGrid

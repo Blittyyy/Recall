@@ -9,16 +9,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import {
-  Play,
   Instagram,
   Youtube,
-  Bell,
   X,
-  Clock,
-  RotateCcw,
   ChevronRight,
-  BookmarkCheck,
 } from "lucide-react-native";
+import { RecallActionIcon } from "../components/RecallActionIcon";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
+import { RecallSavedContentIcon } from "../components/RecallSavedContentIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -29,13 +27,15 @@ import {
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { TikTokIcon } from "../components/AddScreen/TikTokIcon";
+import { RECALL_COLORS } from "../constants/recallTheme";
+import { getDisplayTitle } from "../utils/titleHelpers";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const WHITE = "#FFFFFF";
-const BLACK = "#000000";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F7";
-const GREY_MID = "#C7C7CC";
+const WHITE = RECALL_COLORS.surfaceStrong;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.mutedText;
+const GREY_LIGHT = RECALL_COLORS.subtleStrong;
+const GREY_MID = RECALL_COLORS.mid;
 const { height: SCREEN_H } = Dimensions.get("window");
 const HERO_H = SCREEN_H * 0.48;
 
@@ -220,7 +220,7 @@ export default function NotificationOpenedScreen() {
                 paddingVertical: 7,
               }}
             >
-              <Bell size={12} color={WHITE} fill="rgba(255,255,255,0.6)" />
+              <RecallReminderIcon name="bell" size={12} />
               <Text
                 style={{
                   fontSize: 12,
@@ -239,7 +239,7 @@ export default function NotificationOpenedScreen() {
                   backgroundColor: "rgba(255,255,255,0.4)",
                 }}
               />
-              <Clock size={11} color="rgba(255,255,255,0.7)" />
+              <RecallReminderIcon name="today" size={11} />
               <Text
                 style={{
                   fontSize: 12,
@@ -371,7 +371,7 @@ export default function NotificationOpenedScreen() {
               flexShrink: 0,
             }}
           >
-            <RotateCcw size={18} color="#007AFF" />
+            <RecallReminderIcon name="rediscovery" size={18} />
           </View>
           <View style={{ flex: 1 }}>
             <Text
@@ -407,9 +407,8 @@ export default function NotificationOpenedScreen() {
             lineHeight: 32,
             marginBottom: 10,
           }}
-          numberOfLines={2}
         >
-          {v.title}
+          {getDisplayTitle(v.title)}
         </Text>
 
         <View
@@ -469,7 +468,7 @@ export default function NotificationOpenedScreen() {
                 elevation: 8,
               })}
             >
-              <Play size={18} color={WHITE} fill={WHITE} />
+              <RecallActionIcon name="play" size={18} />
               <Text
                 style={{
                   fontSize: 18,
@@ -496,7 +495,7 @@ export default function NotificationOpenedScreen() {
               gap: 10,
             })}
           >
-            <Bell size={16} color={snoozed ? GREY_MID : GREY_TEXT} />
+            <RecallReminderIcon name="bell" size={16} />
             <Text
               style={{
                 fontSize: 16,
@@ -520,7 +519,7 @@ export default function NotificationOpenedScreen() {
               paddingVertical: 12,
             }}
           >
-            <BookmarkCheck size={14} color={GREY_TEXT} />
+            <RecallSavedContentIcon name="bookmark-check" size={14} />
             <Text
               style={{
                 fontSize: 14,

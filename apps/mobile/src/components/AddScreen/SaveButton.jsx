@@ -1,5 +1,6 @@
 import { View, Text, Pressable, Animated } from "react-native";
-import { BookmarkCheck, Sparkles } from "lucide-react-native";
+import { RecallSavedContentIcon } from "../RecallSavedContentIcon";
+import { RecallReminderIcon } from "../RecallReminderIcon";
 import {
   BG,
   BLACK,
@@ -44,11 +45,11 @@ export function SaveButton({
         left: 0,
         right: 0,
         paddingHorizontal: 20,
-        paddingBottom: insets.bottom + 16,
-        paddingTop: 14,
+        paddingBottom: insets.bottom + 14,
+        paddingTop: 16,
         backgroundColor: BG,
         borderTopWidth: 1,
-        borderTopColor: GREY_LIGHT,
+        borderTopColor: "#E7DED3",
       }}
     >
       <Animated.View style={{ transform: [{ scale: saveAnim }] }}>
@@ -63,25 +64,24 @@ export function SaveButton({
                 : isDisabled
                   ? "#2B2B2B"
                   : BLACK,
-            borderRadius: 20,
-            paddingVertical: 18,
-            minHeight: 58,
+            borderRadius: 24,
+            minHeight: 64,
             alignItems: "center",
             justifyContent: "center",
             flexDirection: "row",
             gap: 10,
             opacity: buttonOpacity,
-            shadowColor: BLACK,
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: hasLink ? 0.18 : 0,
-            shadowRadius: 20,
-            elevation: hasLink ? 6 : 0,
+            shadowColor: "#6E5845",
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: hasLink ? 0.2 : 0,
+            shadowRadius: 24,
+            elevation: hasLink ? 7 : 0,
           })}
         >
           {isSaved ? (
-            <BookmarkCheck size={20} color={WHITE} />
+            <RecallSavedContentIcon name="bookmark-check" size={20} />
           ) : (
-            <Sparkles size={18} color={WHITE} />
+            <RecallReminderIcon name="sparkles" size={18} />
           )}
           <Text
             style={{

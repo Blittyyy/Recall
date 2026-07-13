@@ -13,14 +13,14 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Instagram,
-  Bell,
   ChevronRight,
-  Search,
-  RotateCcw,
-  Play,
   Clock,
   X,
+  Play,
+  Check,
 } from "lucide-react-native";
+import { RecallReminderIcon } from "../../components/RecallReminderIcon";
+import { RecallSavedContentIcon } from "../../components/RecallSavedContentIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -28,8 +28,18 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/dev";
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "expo-router";
+import Reanimated, {
+  Easing,
+  LinearTransition,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { useAppearanceStore } from "../../store/useAppearanceStore";
 import { useRecallStore } from "../../store/useRecallStore";
 import { useSupabaseSessionStore } from "../../store/useSupabaseSessionStore";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
@@ -37,7 +47,9 @@ import { RecallSyncState } from "../../components/RecallSyncState";
 import { TikTokIcon } from "../../components/AddScreen/TikTokIcon";
 import { getRecallProfile } from "../../services/supabaseClient";
 import {
-  getWorthRevisitingVideos,
+  getHomeWorthRevisitingVideos,
+  getHomeWorthRevisitingVideosNeedingExpiry,
+  formatReminderScheduleLabel,
   getRecentlySavedVideos,
   getScheduledReminderVideos,
   isReminderDueToday,
@@ -45,26 +57,37 @@ import {
   getSavedTimeLabel,
   getSavedWeeksLabel,
   getCategoryMeta,
+  getDismissedUntilDate,
 } from "../../utils/resurfacing";
+import { getDisplayTitle } from "../../utils/titleHelpers";
+import { RemoteThumbnailImage } from "../../components/RemoteThumbnailImage";
 import { ReminderSetupModal } from "../../components/ReminderSetupModal";
+import { EmptyHomeState } from "../../components/EmptyHomeState";
+import { VideoThumbnail } from "../../components/VideoThumbnail";
+import { WorthRevisitingCarousel } from "../../components/WorthRevisitingCarousel";
+import {
+  getHomeCardEnterDelay,
+  HomeCardEnter,
+} from "../../components/HomeCardEnter";
+import { RECALL_COLORS } from "../../constants/recallTheme";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
-const BG = "#F7F7F5";
-const WHITE = "#FFFFFF";
-const BLACK = "#111111";
-const GREY_TEXT = "#8E8E93";
-const GREY_LIGHT = "#F2F2F0";
-const GREY_MID = "#C7C7CC";
+const BG = RECALL_COLORS.background;
+const WHITE = RECALL_COLORS.surfaceStrong;
+const BLACK = RECALL_COLORS.text;
+const GREY_TEXT = RECALL_COLORS.mutedText;
+const GREY_LIGHT = RECALL_COLORS.subtleStrong;
+const GREY_MID = RECALL_COLORS.mid;
 const BLUE = "#007AFF";
-const WARM_BG = "#F8F6F3";
-const WARM_SURFACE = "#FCFAF7";
-const SEARCH_FILL = "#FBF9F6";
-const SEARCH_BORDER = "#E7DED3";
-const TAN_BORDER = "#E7DED3";
-const TAN_TEXT = "#7B7268";
-const TAN_ACCENT = "#A57C52";
-const TAN_SHADOW = "#B7A28A";
-const HOME_TEXT = "#241F1A";
+const WARM_BG = RECALL_COLORS.background;
+const WARM_SURFACE = RECALL_COLORS.surface;
+const SEARCH_FILL = RECALL_COLORS.surface;
+const SEARCH_BORDER = RECALL_COLORS.border;
+const TAN_BORDER = RECALL_COLORS.border;
+const TAN_TEXT = RECALL_COLORS.secondaryText;
+const TAN_ACCENT = RECALL_COLORS.accent;
+const TAN_SHADOW = RECALL_COLORS.shadow;
+const HOME_TEXT = RECALL_COLORS.text;
 const SERIF = "Georgia";
 const SCREEN_W = Dimensions.get("window").width;
 const HOME_GRID_GAP = 14;
@@ -73,6 +96,12 @@ const HOME_STAT_W = Math.min(68, Math.max(58, (SCREEN_W - 174) / 3));
 const HOME_BANNER_IMAGE = require("../../../assets/images/home-bottom-card.png");
 const YOUTUBE_LOGO = require("../../../assets/images/youtube-logo.png");
 const SAVED_FOR_LATER_IMAGE = require("../../../assets/images/saved-for-later.png");
+const REMINDER_CARD_MIN_HEIGHT = 106;
+const REMINDER_CARD_MARGIN = 10;
+const REMINDER_COMPLETE_MS = 320;
+const REMINDER_LIST_LAYOUT = LinearTransition.duration(280).easing(
+  Easing.out(Easing.cubic),
+);
 
 // ─── Collections (display-only, not from store yet) ───────────────────────────
 const COLLECTIONS = [
@@ -210,6 +239,8 @@ function SectionHeader({
   px = 20,
   editorial = false,
   showAccent = editorial,
+  subtitleOneLine = false,
+  overlayAction = false,
 }) {
   return (
     <View
@@ -219,6 +250,7 @@ function SectionHeader({
         justifyContent: "space-between",
         marginBottom: 16,
         paddingHorizontal: px,
+        position: "relative",
       }}
     >
       <View style={{ flex: 1, flexDirection: "row", alignItems: "flex-start" }}>
@@ -265,6 +297,7 @@ function SectionHeader({
               paddingLeft: icon ? (editorial ? 0 : 25) : 0,
               lineHeight: editorial ? 21 : undefined,
             }}
+            numberOfLines={subtitleOneLine ? 1 : undefined}
           >
             {subtitle}
           </Text>
@@ -278,8 +311,11 @@ function SectionHeader({
             flexDirection: "row",
             alignItems: "center",
             gap: 4,
-            paddingLeft: 12,
+            paddingLeft: overlayAction ? 4 : 12,
             paddingTop: editorial ? 4 : 0,
+            ...(overlayAction
+              ? { position: "absolute", right: px, top: 0, zIndex: 2 }
+              : null),
           }}
         >
           <Text
@@ -299,7 +335,13 @@ function SectionHeader({
 }
 
 // ─── Worth Revisiting card (store-connected) ───────────────────────────────────
-function WorthRevisitingCard({ video, onPress, onWatch, onRemind, onNotNow }) {
+function LegacyWorthRevisitingCard({
+  video,
+  onPress,
+  onWatch,
+  onRemind,
+  onNotNow,
+}) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const handleIn = () =>
     Animated.spring(scaleAnim, {
@@ -337,8 +379,11 @@ function WorthRevisitingCard({ video, onPress, onWatch, onRemind, onNotNow }) {
         }}
       >
         <View style={{ height: 264, position: "relative" }}>
-          <Image
-            source={{ uri: video.thumbnailUrl }}
+          <RemoteThumbnailImage
+            thumbnailUrl={video.thumbnailUrl}
+            videoUrl={video.videoUrl}
+            videoId={video.id}
+            platform={video.platform}
             style={{ width: "100%", height: "100%" }}
             contentFit="cover"
           />
@@ -432,7 +477,7 @@ function WorthRevisitingCard({ video, onPress, onWatch, onRemind, onNotNow }) {
                 paddingVertical: 6,
               }}
             >
-              <RotateCcw size={10} color="rgba(255,255,255,0.8)" />
+              <RecallReminderIcon name="worth-revisiting" size={10} />
               <Text
                 style={{
                   fontSize: 11,
@@ -491,9 +536,8 @@ function WorthRevisitingCard({ video, onPress, onWatch, onRemind, onNotNow }) {
                 lineHeight: 25,
                 marginBottom: 4,
               }}
-              numberOfLines={2}
             >
-              {video.title}
+              {getDisplayTitle(video.title)}
             </Text>
             <Text
               style={{
@@ -614,34 +658,52 @@ function RecentCard({ video, onPress }) {
     }).start();
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }], width: HOME_CARD_W }}>
+    <Animated.View
+      style={{
+        transform: [{ scale: scaleAnim }],
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: "rgba(232,216,196,0.52)",
+        shadowColor: TAN_SHADOW,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.16,
+        shadowRadius: 20,
+        elevation: 4,
+      }}
+    >
       <Pressable
         onPress={onPress}
         onPressIn={handleIn}
         onPressOut={handleOut}
         style={{
-          borderRadius: 24,
+          borderRadius: 23,
           overflow: "hidden",
-          backgroundColor: "#211813",
-          borderWidth: 1,
-          borderColor: "rgba(232,216,196,0.52)",
-          shadowColor: TAN_SHADOW,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.16,
-          shadowRadius: 20,
-          elevation: 4,
+          backgroundColor: "#ECEAE5",
         }}
       >
-        <View style={{ height: HOME_CARD_W, position: "relative" }}>
-          <Image
-            source={{ uri: video.thumbnailUrl }}
+        <View
+          style={{
+            height: HOME_CARD_W,
+            width: "100%",
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
+          <VideoThumbnail
+            thumbnailUrl={video.thumbnailUrl}
+            videoUrl={video.videoUrl}
+            videoId={video.id}
+            platform={video.platform}
+            variant="homeRecent"
+            showPlatformBadge={false}
             style={{
-              width: "100%",
-              height: "100%",
-              transform: [{ scale: 1.24 }],
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
             }}
-            contentFit="cover"
-            contentPosition="center"
+            imageStyle={{ transform: [{ scale: 1.08 }] }}
           />
           <View
             style={{
@@ -684,7 +746,7 @@ function RecentCard({ video, onPress }) {
               bottom: 0,
               left: 0,
               right: 0,
-              height: "44%",
+              height: "58%",
             }}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
@@ -699,19 +761,18 @@ function RecentCard({ video, onPress }) {
           >
             <Text
               style={{
-                fontSize: 13,
+                fontSize: 11.5,
                 fontFamily: SERIF,
                 color: WHITE,
-                lineHeight: 18,
-                letterSpacing: -0.25,
-                marginBottom: 8,
+                lineHeight: 15,
+                letterSpacing: -0.18,
+                marginBottom: 7,
                 textShadowColor: "rgba(0,0,0,0.42)",
                 textShadowOffset: { width: 0, height: 1 },
                 textShadowRadius: 8,
               }}
-              numberOfLines={2}
             >
-              {video.title}
+              {getDisplayTitle(video.title)}
             </Text>
             <View
               style={{
@@ -729,103 +790,199 @@ function RecentCard({ video, onPress }) {
 }
 
 // ─── Reminder compact card ─────────────────────────────────────────────────────
-function ReminderCard({ video, onPress }) {
+function ReminderCard({
+  video,
+  onPress,
+  onMarkWatched,
+  onRemoveComplete,
+  reduceMotion,
+}) {
+  const completionProgress = useSharedValue(0);
+  const cardHeight = useSharedValue(REMINDER_CARD_MIN_HEIGHT);
+  const isCompletingRef = useRef(false);
+
+  const finishRemoval = useCallback(() => {
+    onRemoveComplete?.();
+  }, [onRemoveComplete]);
+
+  const startCompletion = useCallback(() => {
+    if (isCompletingRef.current) {
+      return;
+    }
+    isCompletingRef.current = true;
+    onMarkWatched?.();
+
+    if (reduceMotion) {
+      completionProgress.value = 1;
+      finishRemoval();
+      return;
+    }
+
+    completionProgress.value = withTiming(
+      1,
+      {
+        duration: REMINDER_COMPLETE_MS,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(finishRemoval)();
+        }
+      },
+    );
+  }, [completionProgress, finishRemoval, onMarkWatched, reduceMotion]);
+
+  const wrapperStyle = useAnimatedStyle(() => ({
+    height: interpolate(
+      completionProgress.value,
+      [0, 1],
+      [cardHeight.value + REMINDER_CARD_MARGIN, 0],
+    ),
+    opacity: interpolate(completionProgress.value, [0, 0.3, 1], [1, 0.72, 0]),
+    overflow: "hidden",
+  }));
+
+  const cardFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(completionProgress.value, [0, 0.45, 1], [1, 0.78, 0.42]),
+  }));
+
+  const playIconStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(completionProgress.value, [0, 0.28], [1, 0]),
+    transform: [
+      {
+        scale: interpolate(completionProgress.value, [0, 0.28], [1, 0.55]),
+      },
+    ],
+  }));
+
+  const checkIconStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(completionProgress.value, [0.12, 0.48], [0, 1]),
+    transform: [
+      {
+        scale: interpolate(completionProgress.value, [0.12, 0.48, 1], [0.45, 1, 1]),
+      },
+    ],
+  }));
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        backgroundColor: pressed ? "#F8F4EF" : WARM_SURFACE,
-        borderRadius: 24,
-        flexDirection: "row",
-        alignItems: "center",
-        overflow: "hidden",
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: TAN_BORDER,
-        shadowColor: TAN_SHADOW,
-        shadowOffset: { width: 0, height: 5 },
-        shadowOpacity: 0.12,
-        shadowRadius: 16,
-        elevation: 2,
-      })}
-    >
-      <View style={{ position: "relative" }}>
-        <Image
-          source={{ uri: video.thumbnailUrl }}
-          style={{ width: 94, height: 94 }}
-          contentFit="cover"
-        />
+    <Reanimated.View style={wrapperStyle}>
+      <Reanimated.View
+        style={cardFadeStyle}
+        onLayout={(event) => {
+          if (!isCompletingRef.current) {
+            cardHeight.value = event.nativeEvent.layout.height;
+          }
+        }}
+      >
         <View
           style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.12)",
-          }}
-        />
-        <View
-          style={{
-            position: "absolute",
-            top: 5,
-            left: 5,
-            backgroundColor: "rgba(255,255,255,0.9)",
-            borderRadius: 8,
-            paddingHorizontal: 4,
-            paddingVertical: 2,
+            minHeight: REMINDER_CARD_MIN_HEIGHT,
+            backgroundColor: WARM_SURFACE,
+            borderRadius: 24,
+            flexDirection: "row",
+            alignItems: "flex-start",
+            padding: 6,
+            shadowColor: "#8D7A68",
+            shadowOffset: { width: 0, height: 5 },
+            shadowOpacity: 0.07,
+            shadowRadius: 18,
+            elevation: 2,
           }}
         >
-          <PlatformIcon platform={video.platform} size={9} />
-        </View>
-      </View>
-      <View style={{ flex: 1, paddingHorizontal: 16 }}>
-        <Text
-          style={{
-            fontSize: 15,
-            fontFamily: SERIF,
-            color: HOME_TEXT,
-            letterSpacing: -0.45,
-            lineHeight: 22,
-            marginBottom: 5,
-          }}
-          numberOfLines={2}
-        >
-          {video.title}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          <Clock size={11} color={GREY_MID} />
-          <Text
+          <Pressable
+            onPress={onPress}
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "flex-start",
+              opacity: pressed ? 0.92 : 1,
+            })}
+          >
+            <VideoThumbnail
+              thumbnailUrl={video.thumbnailUrl}
+              videoUrl={video.videoUrl}
+              videoId={video.id}
+              platform={video.platform}
+              style={{ width: 94, height: 94, borderRadius: 19 }}
+              imageStyle={{ transform: [{ scale: 1.24 }] }}
+            />
+            <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 14 }}>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontFamily: "Inter_600SemiBold",
+                  color: HOME_TEXT,
+                  letterSpacing: -0.2,
+                  lineHeight: 18,
+                  marginBottom: 6,
+                }}
+              >
+                {getDisplayTitle(video.title)}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <RecallReminderIcon name="today" size={11} />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Inter_400Regular",
+                    color: TAN_TEXT,
+                  }}
+                >
+                  {formatReminderScheduleLabel(video)}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+          <View
             style={{
-              fontSize: 12,
-              fontFamily: "Inter_400Regular",
-              color: TAN_TEXT,
+              paddingRight: 10,
+              alignSelf: "stretch",
+              justifyContent: "center",
             }}
           >
-            {video.reminderTime} · {video.reminderFrequency}
-          </Text>
+            <Pressable
+              onPress={startCompletion}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.88 : 1,
+              })}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: BLACK,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  shadowColor: TAN_SHADOW,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.16,
+                  shadowRadius: 10,
+                  elevation: 3,
+                }}
+              >
+                <Reanimated.View style={playIconStyle}>
+                  <Play size={13} color={WHITE} fill={WHITE} />
+                </Reanimated.View>
+                <Reanimated.View
+                  style={[
+                    {
+                      position: "absolute",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    },
+                    checkIconStyle,
+                  ]}
+                >
+                  <Check size={16} color={WHITE} strokeWidth={3} />
+                </Reanimated.View>
+              </View>
+            </Pressable>
+          </View>
         </View>
-      </View>
-      <View style={{ paddingRight: 16 }}>
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: BLACK,
-            justifyContent: "center",
-            alignItems: "center",
-            shadowColor: TAN_SHADOW,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.16,
-            shadowRadius: 10,
-            elevation: 3,
-          }}
-        >
-          <Play size={13} color={WHITE} fill={WHITE} />
-        </View>
-      </View>
-    </Pressable>
+      </Reanimated.View>
+    </Reanimated.View>
   );
 }
 
@@ -866,8 +1023,11 @@ function SavesGridCard({ video, width, onPress }) {
         }}
       >
         <View style={{ height: 128, position: "relative" }}>
-          <Image
-            source={{ uri: video.thumbnailUrl }}
+          <RemoteThumbnailImage
+            thumbnailUrl={video.thumbnailUrl}
+            videoUrl={video.videoUrl}
+            videoId={video.id}
+            platform={video.platform}
             style={{ width: "100%", height: "100%" }}
             contentFit="cover"
           />
@@ -918,9 +1078,8 @@ function SavesGridCard({ video, width, onPress }) {
               marginBottom: 4,
               letterSpacing: -0.1,
             }}
-            numberOfLines={2}
           >
-            {video.title}
+            {getDisplayTitle(video.title)}
           </Text>
           <Text
             style={{
@@ -1024,6 +1183,15 @@ export default function HomeScreen() {
   const markOpened = useRecallStore((s) => s.markOpened);
   const updateVideo = useRecallStore((s) => s.updateVideo);
   const dismissFromResurfacing = useRecallStore((s) => s.dismissFromResurfacing);
+  const markShownInWorthRevisitingHome = useRecallStore(
+    (s) => s.markShownInWorthRevisitingHome,
+  );
+  const clearFromHomeWorthRevisiting = useRecallStore(
+    (s) => s.clearFromHomeWorthRevisiting,
+  );
+  const expireFromHomeWorthRevisiting = useRecallStore(
+    (s) => s.expireFromHomeWorthRevisiting,
+  );
   const [profile, setProfile] = useState(null);
   const openVideoDetail = (videoId) =>
     router.push({
@@ -1032,21 +1200,41 @@ export default function HomeScreen() {
     });
 
   // ── Derived data ────────────────────────────────────────────────────────────
-  const worthRevisiting = getWorthRevisitingVideos(videos, 4);
+  const homeWorthRevisiting = useMemo(
+    () => getHomeWorthRevisitingVideos(videos, 5),
+    [videos],
+  );
   const recentlySaved = getRecentlySavedVideos(videos, 7);
   const activeReminders = getScheduledReminderVideos(videos)
     .filter((v) => v.reminderEnabled)
     .filter((v) => isReminderDueToday(v))
     .slice(0, 3);
+  const reduceMotion = useAppearanceStore((state) => state.reduceMotion);
+  const reminderListLayout = reduceMotion ? undefined : REMINDER_LIST_LAYOUT;
+  const [completedReminderIds, setCompletedReminderIds] = useState([]);
+  const visibleActiveReminders = useMemo(
+    () => activeReminders.filter((video) => !completedReminderIds.includes(video.id)),
+    [activeReminders, completedReminderIds],
+  );
+
+  useEffect(() => {
+    const markOnceReminderDelivered =
+      useRecallStore.getState().markOnceReminderDelivered;
+
+    videos.forEach((video) => {
+      if (video.reminderFrequency !== "Once" || video.onceReminderCompletedAt) {
+        return;
+      }
+
+      const fireAt = video.onceReminderScheduledFireAt;
+      if (fireAt && new Date(fireAt).getTime() <= Date.now()) {
+        markOnceReminderDelivered(video.id).catch(() => null);
+      }
+    });
+  }, [videos]);
   const allSaves = videos.filter((v) => !v.archived);
   const hasSavedVideos = allSaves.length > 0;
-  const hasWorthRevisiting = worthRevisiting.length > 0;
-  const shouldShowWorthRevisitingEmptyState =
-    isLoaded &&
-    allSaves.length > 0 &&
-    !hasWorthRevisiting &&
-    activeReminders.length === 0 &&
-    recentlySaved.length === 0;
+  const hasWorthRevisiting = homeWorthRevisiting.length > 0;
   const displayName = useMemo(
     () => getDisplayName({ profile, user: supabaseUser }),
     [profile, supabaseUser],
@@ -1088,6 +1276,20 @@ export default function HomeScreen() {
     };
   }, [supabaseUser?.id]);
 
+  useEffect(() => {
+    getHomeWorthRevisitingVideosNeedingExpiry(videos).forEach((video) => {
+      expireFromHomeWorthRevisiting(video.id);
+    });
+  }, [videos, expireFromHomeWorthRevisiting]);
+
+  useEffect(() => {
+    homeWorthRevisiting.forEach((video) => {
+      if (!video.shownInWorthRevisitingAt) {
+        markShownInWorthRevisitingHome(video.id);
+      }
+    });
+  }, [homeWorthRevisiting, markShownInWorthRevisitingHome]);
+
   // ── Local UI state ──────────────────────────────────────────────────────────
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1120,6 +1322,7 @@ export default function HomeScreen() {
   });
 
   const handleWatchResurfaced = async (video) => {
+    clearFromHomeWorthRevisiting(video.id);
     markOpened(video.id);
     try {
       await Linking.openURL(video.videoUrl);
@@ -1135,16 +1338,48 @@ export default function HomeScreen() {
     setReminderSetupVideo(video);
   };
 
+  const handleNotNowResurfaced = (video) => {
+    clearFromHomeWorthRevisiting(video.id);
+    dismissFromResurfacing(video.id);
+  };
+
+  const handleReminderWatched = useCallback(
+    (videoId) => {
+      markOpened(videoId);
+    },
+    [markOpened],
+  );
+
+  const handleReminderRemoveComplete = useCallback((videoId) => {
+    setCompletedReminderIds((current) =>
+      current.includes(videoId) ? current : [...current, videoId],
+    );
+  }, []);
+
   const saveReminderSetup = (reminder) => {
     if (!reminderSetupVideo) return;
-    updateVideo(reminderSetupVideo.id, {
+    const id = reminderSetupVideo.id;
+    clearFromHomeWorthRevisiting(id);
+    updateVideo(id, {
       ...reminder,
-      dismissedFromResurfacingUntil: null,
+      dismissedFromResurfacingUntil: getDismissedUntilDate(),
     });
     setReminderSetupVideo(null);
   };
 
   if (!fontsLoaded) return null;
+
+  if (isLoaded && !errorMessage && !hasSavedVideos) {
+    return (
+      <EmptyHomeState
+        greetingName={greetingName}
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        onAddVideo={() => router.push("/(tabs)/add")}
+        onHowSharingWorks={() => router.push("/saving-from-other-apps")}
+      />
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: hasSavedVideos ? WARM_BG : BG }}>
@@ -1330,8 +1565,8 @@ export default function HomeScreen() {
           style={{ marginTop: hasSavedVideos ? 12 : 22, marginHorizontal: 20 }}
         />
         {isLoaded && !errorMessage && allSaves.length === 0 && (
-          <FadeSlide delay={40}>
-            <View style={{ marginTop: 20, paddingHorizontal: 20 }}>
+          <View style={{ marginTop: 20, paddingHorizontal: 20 }}>
+            <HomeCardEnter delay={40}>
               <EmptyStateCard
                 icon="▶"
                 title="Save your first video"
@@ -1339,91 +1574,78 @@ export default function HomeScreen() {
                 ctaLabel="Add a Video"
                 onPress={() => router.push("/(tabs)/add")}
               />
-            </View>
-          </FadeSlide>
+            </HomeCardEnter>
+          </View>
         )}
         {isLoaded && allSaves.length > 0 && hasWorthRevisiting && (
-          <FadeSlide delay={40}>
-            <View style={{ marginTop: 20 }}>
-              <SectionHeader
-                icon={<RotateCcw size={17} color={BLACK} />}
-                title="Worth Revisiting"
-                subtitle="Saved a little while ago. Still interested?"
-                editorial
-              />
-              <View style={{ paddingHorizontal: 20 }}>
-                {worthRevisiting.map((v) => (
-                  <WorthRevisitingCard
-                    key={v.id}
-                    video={v}
-                    onPress={() => openVideoDetail(v.id)}
-                    onWatch={() => handleWatchResurfaced(v)}
-                    onRemind={() => handleRemindResurfaced(v)}
-                    onNotNow={() => dismissFromResurfacing(v.id)}
-                  />
-                ))}
-              </View>
-            </View>
-          </FadeSlide>
+          <View style={{ marginTop: 20 }}>
+            <SectionHeader
+              icon={null}
+              title="Worth Revisiting"
+              subtitle="Saved a little while ago. Still interested?"
+              action="See all"
+              onAction={() => {
+                router.push("/worth-revisiting");
+              }}
+              editorial
+            />
+            <WorthRevisitingCarousel
+              enterBaseDelay={40}
+              videos={homeWorthRevisiting}
+              onPress={(video) => {
+                markOpened(video.id);
+                openVideoDetail(video.id);
+              }}
+              onWatch={handleWatchResurfaced}
+              onRemind={handleRemindResurfaced}
+              onNotNow={handleNotNowResurfaced}
+            />
+          </View>
         )}
 
         {/* ═══ RECENTLY SAVED ══════════════════════════════════════ */}
-        {shouldShowWorthRevisitingEmptyState && (
-          <FadeSlide delay={40}>
-            <View style={{ marginTop: 20, paddingHorizontal: 20 }}>
-              <SectionHeader
-                icon={<RotateCcw size={17} color={BLACK} />}
-                title="Worth Revisiting"
-                subtitle="Saved a little while ago. Still interested?"
-                px={0}
-                editorial
-              />
-              <EmptyStateCard
-                icon="↺"
-                title="Nothing to revisit yet"
-                text="Once you've saved videos for a little while, Recall will bring them back naturally."
-              />
-            </View>
-          </FadeSlide>
-        )}
-
         {isLoaded && allSaves.length > 0 && recentlySaved.length > 0 && (
-          <FadeSlide delay={100}>
-            <View style={{ marginTop: 20 }}>
-              <SectionHeader
-                icon={null}
-                title="Recently saved"
-                subtitle="Fresh additions from the last few days."
-                action="View library"
-                onAction={() => router.push("/(tabs)/saved")}
-                editorial
-                showAccent
-              />
-              <View
-                style={{
-                  paddingHorizontal: 20,
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: HOME_GRID_GAP,
-                }}
-              >
-                {recentlySaved.map((v) => (
+          <View style={{ marginTop: 20 }}>
+            <SectionHeader
+              icon={null}
+              title="Recently saved"
+              subtitle="Fresh additions from the last few days."
+              action="View library"
+              onAction={() => router.push("/(tabs)/saved")}
+              editorial
+              showAccent
+              subtitleOneLine
+              overlayAction
+            />
+            <View
+              style={{
+                paddingHorizontal: 20,
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: HOME_GRID_GAP,
+              }}
+            >
+              {recentlySaved.map((v, index) => (
+                <HomeCardEnter
+                  key={v.id}
+                  delay={getHomeCardEnterDelay(100, index)}
+                  style={{ width: HOME_CARD_W }}
+                >
                   <RecentCard
-                    key={v.id}
                     video={v}
                     onPress={() => openVideoDetail(v.id)}
                   />
-                ))}
-              </View>
+                </HomeCardEnter>
+              ))}
             </View>
-          </FadeSlide>
+          </View>
         )}
 
         {/* ═══ COLLECTIONS ═════════════════════════════════════════ */}
         {false && isLoaded && allSaves.length > 0 && <FadeSlide delay={160}>
           <View style={{ marginTop: 32 }}>
             <SectionHeader
-              icon={<FolderOpen size={17} color={BLACK} />}
+              icon={<RecallSavedContentIcon name="collections" size={17} />}
               title="Collections"
               subtitle="Things you cared enough to save for later"
               action="See all"
@@ -1473,7 +1695,7 @@ export default function HomeScreen() {
                     alignItems: "center",
                   }}
                 >
-                  <Plus size={16} color={GREY_TEXT} />
+                  <RecallSavedContentIcon name="folder-plus" size={16} />
                 </View>
                 <Text
                   style={{
@@ -1492,41 +1714,44 @@ export default function HomeScreen() {
         </FadeSlide>}
 
         {/* ═══ TODAY'S REMINDERS ═══════════════════════════════════ */}
-        {isLoaded && allSaves.length > 0 && activeReminders.length > 0 && (
-          <FadeSlide delay={160}>
-            <View style={{ marginTop: 32 }}>
-              <SectionHeader
-                icon={null}
-                title="Today's reminders"
-                subtitle="Videos you've scheduled"
-                action="Manage"
-                onAction={() => router.push("/(tabs)/calendar")}
-                editorial
-                showAccent
-              />
-              <View
-                style={{
-                  marginHorizontal: 20,
-                  gap: 10,
-                }}
-              >
-                {activeReminders.map((v) => (
-                  <ReminderCard
-                    key={v.id}
-                    video={v}
-                    onPress={() => openVideoDetail(v.id)}
-                  />
-                ))}
-              </View>
+        {isLoaded && allSaves.length > 0 && visibleActiveReminders.length > 0 && (
+          <View style={{ marginTop: 32 }}>
+            <SectionHeader
+              icon={null}
+              title="Today's reminders"
+              subtitle="Videos you've scheduled"
+              action="Manage"
+              onAction={() => router.push("/(tabs)/calendar")}
+              editorial
+              showAccent
+            />
+            <View
+              style={{
+                marginHorizontal: 20,
+              }}
+            >
+              {visibleActiveReminders.map((v, index) => (
+                <Reanimated.View key={v.id} layout={reminderListLayout}>
+                  <HomeCardEnter delay={getHomeCardEnterDelay(160, index)}>
+                    <ReminderCard
+                      video={v}
+                      onPress={() => openVideoDetail(v.id)}
+                      onMarkWatched={() => handleReminderWatched(v.id)}
+                      onRemoveComplete={() => handleReminderRemoveComplete(v.id)}
+                      reduceMotion={reduceMotion}
+                    />
+                  </HomeCardEnter>
+                </Reanimated.View>
+              ))}
             </View>
-          </FadeSlide>
+          </View>
         )}
 
         {/* ═══ FROM YOUR SAVES ══════════════════════════════════════ */}
         {false && isLoaded && allSaves.length > 0 && <FadeSlide delay={280}>
           <View style={{ marginTop: 32 }}>
             <SectionHeader
-              icon={<Sparkles size={17} color={BLACK} />}
+              icon={<RecallReminderIcon name="sparkles" size={17} />}
               title="From Your Saves"
               subtitle="Rediscover what you've collected"
               action="See all"
@@ -1642,10 +1867,8 @@ export default function HomeScreen() {
               style={{
                 marginTop: 32,
                 marginHorizontal: 20,
-                backgroundColor: WARM_SURFACE,
+                backgroundColor: "#FFFCF8",
                 borderRadius: 28,
-                borderWidth: 1,
-                borderColor: TAN_BORDER,
                 overflow: "hidden",
                 shadowColor: TAN_SHADOW,
                 shadowOffset: { width: 0, height: 8 },
@@ -1655,8 +1878,8 @@ export default function HomeScreen() {
                 flexDirection: "row",
                 minHeight: 178,
                 position: "relative",
-                }}
-              >
+              }}
+            >
               <View
                 style={{
                   position: "absolute",
@@ -1670,59 +1893,19 @@ export default function HomeScreen() {
                   source={HOME_BANNER_IMAGE}
                   style={{ width: "100%", height: "100%" }}
                   contentFit="cover"
-                  contentPosition="right center"
-                />
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: "rgba(252,250,247,0.12)",
-                  }}
-                />
-                <LinearGradient
-                  colors={[
-                    WARM_SURFACE,
-                    "rgba(252,250,247,0.96)",
-                    "rgba(252,250,247,0.72)",
-                    "rgba(252,250,247,0.28)",
-                    "rgba(252,250,247,0)",
-                  ]}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    left: 0,
-                    width: "72%",
-                  }}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                />
-                <LinearGradient
-                  colors={["rgba(165,124,82,0.08)", "rgba(165,124,82,0.16)"]}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                  }}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
+                  contentPosition="left center"
                 />
               </View>
-                <View
-                  style={{
-                    width: "56%",
-                    paddingVertical: 20,
-                    paddingLeft: 20,
-                    paddingRight: 12,
-                    justifyContent: "center",
-                    zIndex: 1,
-                  }}
-                >
+              <View
+                style={{
+                  width: "56%",
+                  paddingVertical: 20,
+                  paddingLeft: 20,
+                  paddingRight: 12,
+                  justifyContent: "center",
+                  zIndex: 1,
+                }}
+              >
                 <Text
                   style={{
                     fontSize: 21,

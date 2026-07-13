@@ -10,22 +10,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import {
   ChevronLeft,
-  Play,
   CheckCircle2,
   Instagram,
   Youtube,
   Clock,
-  RefreshCw,
-  Tag,
   CalendarDays,
-  RotateCcw,
-  BookmarkCheck,
   MoreHorizontal,
-  Share2,
-  Bell,
-  Edit3,
   Trash2,
 } from "lucide-react-native";
+import { RecallActionIcon } from "../components/RecallActionIcon";
+import { RecallReminderIcon } from "../components/RecallReminderIcon";
+import { RecallSavedContentIcon } from "../components/RecallSavedContentIcon";
 import {
   useFonts,
   Inter_400Regular,
@@ -157,9 +152,9 @@ function OptionsMenu({ visible, onClose }) {
   if (!visible) return null;
 
   const OPTIONS = [
-    { icon: <Edit3 size={16} color={BLACK} />, label: "Edit Routine" },
-    { icon: <Bell size={16} color={BLACK} />, label: "Change Reminder" },
-    { icon: <Share2 size={16} color={BLACK} />, label: "Share Video" },
+    { icon: <RecallActionIcon name="edit" size={18} />, label: "Edit Routine" },
+    { icon: <RecallReminderIcon name="bell" size={16} />, label: "Change Reminder" },
+    { icon: <RecallActionIcon name="share" size={16} />, label: "Share Video" },
     {
       icon: <Trash2 size={16} color="#FF3B30" />,
       label: "Delete Routine",
@@ -633,7 +628,7 @@ export default function RoutineDetailScreen() {
                   elevation: 6,
                 })}
               >
-                <Play size={17} color={WHITE} fill={WHITE} />
+                <RecallActionIcon name="play" size={17} />
                 <Text
                   style={{
                     fontSize: 17,
@@ -736,7 +731,7 @@ export default function RoutineDetailScreen() {
                   alignItems: "center",
                 }}
               >
-                <RotateCcw size={20} color="#007AFF" />
+                <RecallReminderIcon name="rediscovery" size={20} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -799,12 +794,12 @@ export default function RoutineDetailScreen() {
               value={routine.reminderTime}
             />
             <InfoRow
-              icon={<RefreshCw size={16} color="#34C759" />}
+              icon={<RecallReminderIcon name="rediscovery" size={16} />}
               label="Repeats"
               value={routine.frequency}
             />
             <InfoRow
-              icon={<Tag size={16} color={ORANGE} />}
+              icon={<RecallActionIcon name="tag" size={16} />}
               label="Category"
               value={`${routine.categoryEmoji}  ${routine.category}`}
             />
@@ -848,7 +843,7 @@ export default function RoutineDetailScreen() {
                 flexShrink: 0,
               }}
             >
-              <BookmarkCheck size={22} color={BLACK} />
+              <RecallSavedContentIcon name="bookmark-check" size={22} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
