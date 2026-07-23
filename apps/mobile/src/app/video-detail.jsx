@@ -52,6 +52,8 @@ import { CollectionSelectionModal } from "../components/CollectionSelectionModal
 import { EditVideoDetailsModal } from "../components/EditVideoDetailsModal";
 import { cancelFollowUpReminderNotificationsForVideo } from "../services/recallNotifications";
 import { RECALL_COLORS } from "../constants/recallTheme";
+import { getOpenActionLabel } from "../utils/openActionLabel";
+import { getPlatformDisplayName } from "../utils/urlHelpers";
 
 const BG = RECALL_COLORS.background;
 const BLACK = RECALL_COLORS.text;
@@ -190,13 +192,14 @@ export default function VideoDetailScreen() {
       : `Opened ${video.revisitCount} times`;
   const showActiveReminderSchedule = isActiveReminderSchedule(video);
   const onceReminderCompleted = isOnceReminderCompleted(video);
+  const openActionLabel = getOpenActionLabel(video);
 
   const openVideo = async () => {
     markOpened(video.id);
     try {
       await Linking.openURL(video.videoUrl);
     } catch {
-      Alert.alert("Could not open video", "The original link may be invalid.");
+      Alert.alert("Could not open link", "Please try again.");
     }
   };
 
@@ -293,8 +296,14 @@ export default function VideoDetailScreen() {
                 showPlatformBadge={false}
               >
                 <View style={styles.platformBadge}>
-                  <PlatformIcon platform={video.platform} size={14} />
-                  <Text style={styles.platformText}>{video.platform}</Text>
+                  <PlatformIcon
+                    platform={video.platform}
+                    url={video.videoUrl}
+                    size={14}
+                  />
+                  <Text style={styles.platformText}>
+                    {getPlatformDisplayName(video.platform, video.videoUrl)}
+                  </Text>
                 </View>
               </VideoThumbnail>
             </Animated.View>
@@ -343,7 +352,7 @@ export default function VideoDetailScreen() {
               ]}
             >
               <RecallActionIcon name="play" size={17} />
-              <Text style={styles.primaryButtonText}>Open Video</Text>
+              <Text style={styles.primaryButtonText}>{openActionLabel}</Text>
             </Pressable>
 
             <View style={styles.card}>
@@ -693,7 +702,7 @@ const styles = {
   platformText: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
-    color: BLACK,
+    color: "#1E1915",
   },
   title: {
     fontSize: 30,

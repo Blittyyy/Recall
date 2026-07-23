@@ -120,7 +120,7 @@ export function SaveButton({
             marginTop: 10,
           }}
         >
-          TikTok, Instagram, and YouTube links are supported
+          TikTok, Instagram, YouTube, and webpage links are supported
         </Text>
       )}
     </View>

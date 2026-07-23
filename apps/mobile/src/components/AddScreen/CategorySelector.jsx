@@ -19,7 +19,7 @@ export function CategorySelector({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 10 }}
+        contentContainerStyle={{ gap: 8 }}
         style={{ flexGrow: 0 }}
       >
         {CATEGORIES.map((c) => {
@@ -31,9 +31,9 @@ export function CategorySelector({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 17,
-                paddingVertical: 12,
+                gap: 4,
+                paddingHorizontal: 14,
+                paddingVertical: 11,
                 borderRadius: 32,
                 backgroundColor: active ? BLACK : WHITE,
                 borderWidth: active ? 0 : 1,

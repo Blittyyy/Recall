@@ -19,6 +19,10 @@ import {
   getAllWorthRevisitingVideos,
   getDismissedUntilDate,
 } from "../utils/resurfacing";
+import {
+  toAnalyticsPlatform,
+  trackEvent,
+} from "../services/analytics";
 import { RECALL_COLORS } from "../constants/recallTheme";
 
 const BG = RECALL_COLORS.background;
@@ -86,7 +90,7 @@ export default function WorthRevisitingScreen() {
     [videos],
   );
 
-  const openVideoDetail = (videoId) => {
+  const navigateToVideoDetail = (videoId) => {
     markOpened(videoId);
     router.push({
       pathname: "/video-detail",
@@ -94,13 +98,24 @@ export default function WorthRevisitingScreen() {
     });
   };
 
+  const openVideoDetail = (videoId) => {
+    const video = videos.find((entry) => entry.id === videoId);
+    trackEvent("worth_revisiting_opened", {
+      item_platform: toAnalyticsPlatform(video?.platform),
+    });
+    navigateToVideoDetail(videoId);
+  };
+
   const handleWatchResurfaced = async (video) => {
+    trackEvent("worth_revisiting_opened", {
+      item_platform: toAnalyticsPlatform(video?.platform),
+    });
     clearFromHomeWorthRevisiting(video.id);
     markOpened(video.id);
     try {
       await Linking.openURL(video.videoUrl);
     } catch {
-      openVideoDetail(video.id);
+      navigateToVideoDetail(video.id);
     }
   };
 

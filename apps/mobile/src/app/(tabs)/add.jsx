@@ -167,7 +167,8 @@ export default function AddScreen() {
                 alignItems: "center",
                 justifyContent: "center",
                 marginBottom: 28,
-                gap: 6,
+                gap: 4,
+                paddingHorizontal: 20,
               }}
             >
               <RecallReminderIcon name="sparkles" size={13} />
@@ -178,7 +179,7 @@ export default function AddScreen() {
                   color: GREY_MID,
                 }}
               >
-                Paste a TikTok, Reel, or YouTube link
+                Paste a TikTok, Reel, YouTube, or webpage link
               </Text>
             </View>
           )}

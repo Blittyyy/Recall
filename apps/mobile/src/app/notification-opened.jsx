@@ -11,6 +11,7 @@ import { Image } from "expo-image";
 import {
   Instagram,
   Youtube,
+  Globe,
   X,
   ChevronRight,
 } from "lucide-react-native";
@@ -28,6 +29,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { TikTokIcon } from "../components/AddScreen/TikTokIcon";
 import { RECALL_COLORS } from "../constants/recallTheme";
+import { getOpenActionLabel } from "../utils/openActionLabel";
 import { getDisplayTitle } from "../utils/titleHelpers";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ function PlatformIcon({ platform, size = 13 }) {
   if (platform === "Instagram")
     return <Instagram size={size} color="#E4405F" />;
   if (platform === "YouTube") return <Youtube size={size} color="#FF0000" />;
+  if (platform === "Web") return <Globe size={size} color="#5B6B7C" />;
   return <TikTokIcon size={size} color={BLACK} />;
 }
 
@@ -144,6 +147,7 @@ export default function NotificationOpenedScreen() {
   if (!fontsLoaded) return null;
 
   const v = VIDEO;
+  const openActionLabel = getOpenActionLabel(v);
 
   return (
     <View style={{ flex: 1, backgroundColor: BLACK }}>
@@ -477,7 +481,7 @@ export default function NotificationOpenedScreen() {
                   letterSpacing: -0.4,
                 }}
               >
-                Watch Now
+                {openActionLabel}
               </Text>
             </Pressable>
           </Animated.View>

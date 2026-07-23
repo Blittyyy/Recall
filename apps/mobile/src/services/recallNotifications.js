@@ -419,14 +419,72 @@ export async function getNotificationPermissionStatus() {
   return settings.status;
 }
 
+export async function getNotificationPermissionDetails() {
+  if (!notificationsSupported()) {
+    return {
+      status: "unavailable",
+      granted: false,
+      canAskAgain: false,
+    };
+  }
+
+  const settings = await Notifications.getPermissionsAsync();
+  return {
+    status: settings.status,
+    granted: Boolean(settings.granted) || settings.status === "granted",
+    canAskAgain: settings.canAskAgain !== false,
+  };
+}
+
+/**
+ * Decide what UX to show before saving an enabled reminder.
+ * - granted → proceed (schedule will work)
+ * - denied / can't ask again → settings sheet
+ * - undetermined → always show custom pre-permission sheet
+ *   (native iOS dialog only after explicit "Enable Notifications")
+ */
+export async function resolveReminderNotificationPermissionGate() {
+  if (!notificationsSupported()) {
+    return { action: "proceed", status: "unavailable" };
+  }
+
+  const details = await getNotificationPermissionDetails();
+
+  if (details.status === "granted" || details.granted) {
+    return { action: "proceed", status: "granted" };
+  }
+
+  if (
+    details.status === "denied" ||
+    details.status === "blocked" ||
+    details.canAskAgain === false
+  ) {
+    return { action: "show-settings", status: "denied" };
+  }
+
+  if (details.status === "undetermined") {
+    return { action: "show-pre-prompt", status: "undetermined" };
+  }
+
+  // Fallback: treat unknown states as settings (safe, never re-prompts OS).
+  return { action: "show-settings", status: details.status };
+}
+
 export async function requestNotificationPermission() {
   if (!notificationsSupported()) {
     return "unavailable";
   }
 
-  const currentStatus = await getNotificationPermissionStatus();
-  if (currentStatus !== "undetermined") {
-    return currentStatus;
+  const details = await getNotificationPermissionDetails();
+  if (details.status === "granted" || details.granted) {
+    return "granted";
+  }
+
+  if (
+    details.status !== "undetermined" ||
+    details.canAskAgain === false
+  ) {
+    return details.status;
   }
 
   const settings = await Notifications.requestPermissionsAsync();

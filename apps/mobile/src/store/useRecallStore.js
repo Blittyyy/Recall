@@ -29,6 +29,7 @@ import {
   clearOnceReminderCompleted,
   clearReminderFollowUpDelayForVideo,
   cancelReminderNotificationsForVideo,
+  getNotificationPermissionStatus,
   getOnceReminderCompletedMap,
   getOnceReminderScheduleMap,
   getReminderFollowUpPreferences,
@@ -38,6 +39,11 @@ import {
   syncOnceReminderCompletionState,
   syncReminderNotificationForVideo,
 } from "../services/recallNotifications";
+import {
+  toAnalyticsPlatform,
+  toReminderType,
+  trackEvent,
+} from "../services/analytics";
 import {
   clearWorthRevisitingHomeEntry,
   loadWorthRevisitingHomeMeta,
@@ -400,6 +406,19 @@ function buildMutationError(error, fallback) {
   return getFriendlySupabaseError(error, fallback);
 }
 
+async function trackReminderCreatedSuccess(video) {
+  try {
+    const permissionStatus = await getNotificationPermissionStatus();
+    trackEvent("reminder_created", {
+      reminder_type: toReminderType(video?.reminderFrequency),
+      notifications_enabled: permissionStatus === "granted",
+      save_platform: toAnalyticsPlatform(video?.platform),
+    });
+  } catch {
+    // Analytics must never block reminder success.
+  }
+}
+
 function getPaywallState() {
   return usePaywallStore.getState();
 }
@@ -706,8 +725,12 @@ export const useRecallStore = create((set, get) => ({
               video.timezone ??
               Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
-          { requestPermission: true },
+          { requestPermission: false },
         );
+        await trackReminderCreatedSuccess({
+          ...video,
+          id: savedVideoRow.id,
+        });
       }
       await get().reloadData();
       return {
@@ -730,11 +753,16 @@ export const useRecallStore = create((set, get) => ({
     const currentVideo = previousVideos.find((video) => video.id === id);
     if (!currentVideo) return null;
 
-    if (hasReminderUpdates(updates)) {
-      const nextVideo = applyReminderPatch(currentVideo, updates);
-      const isActivatingReminder =
-        !currentVideo.reminderEnabled && nextVideo.reminderEnabled;
+    const nextReminderVideo = hasReminderUpdates(updates)
+      ? applyReminderPatch(currentVideo, updates)
+      : null;
+    const isActivatingReminder = Boolean(
+      nextReminderVideo &&
+        !currentVideo.reminderEnabled &&
+        nextReminderVideo.reminderEnabled,
+    );
 
+    if (hasReminderUpdates(updates)) {
       if (isActivatingReminder) {
         const { tier, showPaywall } = getPaywallState();
         const usage = getFreemiumUsage({
@@ -777,10 +805,6 @@ export const useRecallStore = create((set, get) => ({
       if (hasReminderUpdates(updates)) {
         let currentVideo = get().videos.find((video) => video.id === id);
         if (!currentVideo) return null;
-        const isCreatingReminder =
-          !previousVideos.find((video) => video.id === id)?.hasReminder &&
-          currentVideo.hasReminder &&
-          currentVideo.reminderEnabled;
         currentVideo = await prepareOnceReminderForSync(currentVideo);
         if (
           currentVideo.reminderFrequency === "Once" &&
@@ -820,9 +844,12 @@ export const useRecallStore = create((set, get) => ({
               Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
           {
-            requestPermission: isCreatingReminder,
+            requestPermission: false,
           },
         );
+        if (isActivatingReminder && currentVideo.hasReminder) {
+          await trackReminderCreatedSuccess(currentVideo);
+        }
       }
       return {
         blockedByPaywall: false,
@@ -1078,10 +1105,6 @@ export const useRecallStore = create((set, get) => ({
     try {
       let savedVideo = get().videos.find((video) => video.id === id);
       if (!savedVideo) return null;
-      const isCreatingReminder =
-        !currentVideo.hasReminder &&
-        savedVideo.hasReminder &&
-        savedVideo.reminderEnabled;
       savedVideo = await prepareOnceReminderForSync(savedVideo);
       if (
         savedVideo.reminderFrequency === "Once" &&
@@ -1121,9 +1144,12 @@ export const useRecallStore = create((set, get) => ({
             Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
         {
-          requestPermission: isCreatingReminder,
+          requestPermission: false,
         },
       );
+      if (isActivatingReminder && savedVideo.hasReminder) {
+        await trackReminderCreatedSuccess(savedVideo);
+      }
       return {
         blockedByPaywall: false,
       };

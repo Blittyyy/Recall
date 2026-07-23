@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import { Trash2 } from "lucide-react-native";
 import { RecallReminderIcon } from "./RecallReminderIcon";
+import { NotificationPermissionSheets } from "./NotificationPermissionSheets";
 import {
   BLACK,
   GREY_LIGHT,
@@ -23,6 +25,10 @@ import {
 import { VideoThumbnail } from "./VideoThumbnail";
 import { getCategoryMeta } from "../utils/resurfacing";
 import { getDisplayTitle } from "../utils/titleHelpers";
+import {
+  requestNotificationPermission,
+  resolveReminderNotificationPermissionGate,
+} from "../services/recallNotifications";
 
 const TIME_PRESETS = [
   { id: "morning", label: "Morning", time: "07:00 AM" },
@@ -78,6 +84,9 @@ export function ReminderSetupModal({
   const [reminderDays, setReminderDays] = useState([]);
   const [reminderFollowUpDelayMinutes, setReminderFollowUpDelayMinutes] =
     useState(null);
+  const [permissionSheetMode, setPermissionSheetMode] = useState(null);
+  const [pendingReminderPayload, setPendingReminderPayload] = useState(null);
+  const [isPermissionBusy, setIsPermissionBusy] = useState(false);
 
   const hasExistingReminder = initialReminder?.hasReminder ?? false;
   const isFirstTimeSetup = !hasExistingReminder && !allowDelete;
@@ -101,7 +110,12 @@ export function ReminderSetupModal({
   const helperText = getDayHelperText(reminderFrequency, reminderDays);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setPermissionSheetMode(null);
+      setPendingReminderPayload(null);
+      setIsPermissionBusy(false);
+      return;
+    }
 
     const nextTime = initialReminder?.reminderTime ?? "07:00 AM";
     const parsedTime = parseReminderTime(nextTime) ?? parseReminderTime("07:00 AM");
@@ -204,7 +218,7 @@ export function ReminderSetupModal({
     });
   };
 
-  const handleSave = () => {
+  const buildReminderPayload = () => {
     const hadReminder = initialReminder?.hasReminder ?? false;
     const nextEnabled = showReminderToggle ? reminderEnabled : true;
     const nextDays =
@@ -214,7 +228,7 @@ export function ReminderSetupModal({
           ? reminderDays
           : [];
 
-    onSave({
+    return {
       hasReminder: nextEnabled ? true : hadReminder,
       reminderEnabled: nextEnabled,
       reminderTime: nextEnabled || hadReminder ? reminderTime : null,
@@ -222,13 +236,105 @@ export function ReminderSetupModal({
       reminderDays: nextEnabled || hadReminder ? nextDays : [],
       reminderFollowUpDelayMinutes:
         nextEnabled || hadReminder ? reminderFollowUpDelayMinutes : null,
-    });
+    };
+  };
+
+  const commitReminderPayload = (payload) => {
+    setPermissionSheetMode(null);
+    setPendingReminderPayload(null);
+    setIsPermissionBusy(false);
+    onSave(payload);
+  };
+
+  const handleSave = async () => {
+    if (!canSave || isPermissionBusy) {
+      return;
+    }
+
+    const payload = buildReminderPayload();
+    const wasAlreadyActive =
+      Boolean(initialReminder?.hasReminder) &&
+      Boolean(initialReminder?.reminderEnabled);
+
+    // Skip the OS/UX gate when disabling, or when editing an already-active reminder.
+    if (!payload.reminderEnabled || wasAlreadyActive) {
+      commitReminderPayload(payload);
+      return;
+    }
+
+    setIsPermissionBusy(true);
+    try {
+      const gate = await resolveReminderNotificationPermissionGate();
+
+      if (gate.action === "proceed") {
+        commitReminderPayload(payload);
+        return;
+      }
+
+      setPendingReminderPayload(payload);
+      setPermissionSheetMode(
+        gate.action === "show-pre-prompt" ? "pre-prompt" : "settings",
+      );
+    } catch (error) {
+      console.warn("[Recall] Reminder permission gate failed", error);
+      // Don't block saving if the permission check itself fails.
+      commitReminderPayload(payload);
+    } finally {
+      setIsPermissionBusy(false);
+    }
+  };
+
+  const handlePrePromptEnable = async () => {
+    if (!pendingReminderPayload || isPermissionBusy) {
+      return;
+    }
+
+    setIsPermissionBusy(true);
+    try {
+      const status = await requestNotificationPermission();
+      if (status === "granted") {
+        commitReminderPayload(pendingReminderPayload);
+        return;
+      }
+
+      // Denied after explicit Enable — save still happens once they acknowledge.
+      setPermissionSheetMode("settings");
+    } finally {
+      setIsPermissionBusy(false);
+    }
+  };
+
+  const handlePrePromptNotNow = async () => {
+    if (!pendingReminderPayload) {
+      return;
+    }
+
+    commitReminderPayload(pendingReminderPayload);
+  };
+
+  const handleDeniedOpenSettings = () => {
+    if (!pendingReminderPayload) {
+      return;
+    }
+
+    const payload = pendingReminderPayload;
+    commitReminderPayload(payload);
+    Linking.openSettings().catch(() => null);
+  };
+
+  const handleDeniedContinue = () => {
+    if (!pendingReminderPayload) {
+      return;
+    }
+
+    commitReminderPayload(pendingReminderPayload);
   };
 
   const customChipLabel =
     selectedPresetId === "custom" ? reminderTime : "Custom";
 
   return (
+    <>
     <Modal
       visible={visible}
       transparent
@@ -543,13 +649,17 @@ export function ReminderSetupModal({
                 <View style={{ marginTop: 20 }}>
                   <Pressable
                     onPress={handleSave}
-                    disabled={!canSave}
+                    disabled={!canSave || isPermissionBusy}
                     style={[
                       styles.primaryButton,
-                      !canSave ? styles.primaryButtonDisabled : null,
+                      !canSave || isPermissionBusy
+                        ? styles.primaryButtonDisabled
+                        : null,
                     ]}
                   >
-                    <Text style={styles.primaryButtonText}>Save Reminder</Text>
+                    <Text style={styles.primaryButtonText}>
+                      {isPermissionBusy ? "Saving..." : "Save Reminder"}
+                    </Text>
                   </Pressable>
 
                   <View
@@ -582,8 +692,21 @@ export function ReminderSetupModal({
             </ScrollView>
           </View>
         </View>
+
+        <NotificationPermissionSheets
+          embedded
+          mode={permissionSheetMode === "settings" ? "settings" : "pre-prompt"}
+          visible={Boolean(permissionSheetMode)}
+          insets={insets}
+          isBusy={isPermissionBusy}
+          onEnable={handlePrePromptEnable}
+          onNotNow={handlePrePromptNotNow}
+          onOpenSettings={handleDeniedOpenSettings}
+          onContinueWithout={handleDeniedContinue}
+        />
       </View>
     </Modal>
+    </>
   );
 }
 
@@ -745,6 +868,10 @@ function formatPlatformLabel(platform) {
   if (normalized === "youtube") return "YouTube";
   if (normalized === "instagram") return "Instagram";
   if (normalized === "tiktok") return "TikTok";
+  if (normalized === "amazon") return "Amazon";
+  if (normalized === "web" || normalized === "website" || normalized === "webpage") {
+    return "Web";
+  }
   return platform || "Video";
 }
 
@@ -786,7 +913,7 @@ const styles = {
   contextPlatform: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
-    color: BLACK,
+    color: "#1E1915",
     opacity: 0.72,
     marginBottom: 5,
   },

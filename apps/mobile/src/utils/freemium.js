@@ -18,6 +18,26 @@ export const PAYWALL_TRIGGERS = {
   ADVANCED_RESURFACING: "advanced-resurfacing",
 };
 
+/**
+ * Temporary TestFlight / internal-beta soft-lock bypass.
+ *
+ * Limits stay OFF until this is explicitly enabled for App Store production:
+ *   EXPO_PUBLIC_ENFORCE_FREEMIUM_LIMITS=true
+ *
+ * Leave unset (or set to "false") for development, preview, and TestFlight builds.
+ */
+export function areFreemiumLimitsEnforced() {
+  return process.env.EXPO_PUBLIC_ENFORCE_FREEMIUM_LIMITS === "true";
+}
+
+function isLimitPaywallTrigger(trigger) {
+  return (
+    trigger === PAYWALL_TRIGGERS.SAVE_VIDEO ||
+    trigger === PAYWALL_TRIGGERS.CREATE_REMINDER ||
+    trigger === PAYWALL_TRIGGERS.CREATE_COLLECTION
+  );
+}
+
 function isProTier(tier) {
   return tier === PLAN_TIERS.PRO;
 }
@@ -39,6 +59,10 @@ export function canSaveVideo({
   tier = PLAN_TIERS.FREE,
   savedVideosCount = 0,
 } = {}) {
+  if (!areFreemiumLimitsEnforced()) {
+    return true;
+  }
+
   return isProTier(tier) || savedVideosCount < FREE_TIER_LIMITS.savedVideos;
 }
 
@@ -46,6 +70,10 @@ export function canCreateReminder({
   tier = PLAN_TIERS.FREE,
   activeRemindersCount = 0,
 } = {}) {
+  if (!areFreemiumLimitsEnforced()) {
+    return true;
+  }
+
   return (
     isProTier(tier) ||
     activeRemindersCount < FREE_TIER_LIMITS.activeReminders
@@ -56,6 +84,10 @@ export function canCreateCollection({
   tier = PLAN_TIERS.FREE,
   collectionsCount = 0,
 } = {}) {
+  if (!areFreemiumLimitsEnforced()) {
+    return true;
+  }
+
   return isProTier(tier) || collectionsCount < FREE_TIER_LIMITS.collections;
 }
 
@@ -67,6 +99,11 @@ export function shouldShowPaywall({
   collectionsCount = 0,
 } = {}) {
   if (isProTier(tier)) {
+    return false;
+  }
+
+  // Beta / TestFlight: never soft-lock saves, reminders, or collections.
+  if (!areFreemiumLimitsEnforced() && isLimitPaywallTrigger(trigger)) {
     return false;
   }
 

@@ -11,7 +11,7 @@ const NAV_ICONS = {
   profile: require("../../../assets/icons/navigation/nav-profile.png"),
 };
 
-function NavigationIcon({ source, focused }) {
+function NavigationIcon({ source, focused, colors }) {
   return (
     <Image
       source={source}
@@ -19,7 +19,8 @@ function NavigationIcon({ source, focused }) {
       style={{
         width: 27,
         height: 27,
-        opacity: focused ? 1 : 0.58,
+        opacity: focused ? 1 : colors.dark ? 0.84 : 0.58,
+        tintColor: focused ? colors.accent : colors.secondaryText,
       }}
     />
   );
@@ -32,7 +33,7 @@ function AddTabIcon({ colors }) {
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: colors.background,
+        backgroundColor: colors.surfaceStrong,
         justifyContent: "center",
         alignItems: "center",
         alignSelf: "center",
@@ -41,7 +42,7 @@ function AddTabIcon({ colors }) {
         borderColor: colors.border,
         shadowColor: colors.shadow,
         shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.12,
+        shadowOpacity: colors.dark ? 0.35 : 0.12,
         shadowRadius: 14,
         elevation: 6,
       }}
@@ -49,7 +50,11 @@ function AddTabIcon({ colors }) {
       <Image
         source={NAV_ICONS.plus}
         resizeMode="contain"
-        style={{ width: 34, height: 34 }}
+        style={{
+          width: 34,
+          height: 34,
+          tintColor: colors.text,
+        }}
       />
     </View>
   );
@@ -74,14 +79,14 @@ export default function TabLayout() {
           height: tabBarHeight,
           paddingBottom: tabBarBottomPadding,
           paddingTop: isWeb ? 10 : 8,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.05,
-          shadowRadius: 16,
-          elevation: 10,
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: colors.dark ? 0.28 : 0.05,
+          shadowRadius: colors.dark ? 10 : 16,
+          elevation: colors.dark ? 8 : 10,
         },
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.mutedText,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.secondaryText,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "600",
@@ -99,7 +104,11 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ focused }) => (
-            <NavigationIcon source={NAV_ICONS.home} focused={focused} />
+            <NavigationIcon
+              source={NAV_ICONS.home}
+              focused={focused}
+              colors={colors}
+            />
           ),
         }}
       />
@@ -108,7 +117,11 @@ export default function TabLayout() {
         options={{
           title: "Library",
           tabBarIcon: ({ focused }) => (
-            <NavigationIcon source={NAV_ICONS.library} focused={focused} />
+            <NavigationIcon
+              source={NAV_ICONS.library}
+              focused={focused}
+              colors={colors}
+            />
           ),
         }}
       />
@@ -126,7 +139,11 @@ export default function TabLayout() {
         options={{
           title: "Reminders",
           tabBarIcon: ({ focused }) => (
-            <NavigationIcon source={NAV_ICONS.reminders} focused={focused} />
+            <NavigationIcon
+              source={NAV_ICONS.reminders}
+              focused={focused}
+              colors={colors}
+            />
           ),
         }}
       />
@@ -135,7 +152,11 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ focused }) => (
-            <NavigationIcon source={NAV_ICONS.profile} focused={focused} />
+            <NavigationIcon
+              source={NAV_ICONS.profile}
+              focused={focused}
+              colors={colors}
+            />
           ),
         }}
       />

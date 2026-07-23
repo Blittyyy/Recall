@@ -1,6 +1,12 @@
 const MOBILE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
+function isAmazonThumbnailUrl(thumbnailUrl) {
+  return /(?:media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com|amazon-adsystem\.com)/i.test(
+    thumbnailUrl,
+  );
+}
+
 export function needsProtectedThumbnailLoad(thumbnailUrl, platform) {
   if (!thumbnailUrl?.trim()) {
     return false;
@@ -10,6 +16,7 @@ export function needsProtectedThumbnailLoad(thumbnailUrl, platform) {
   return (
     normalizedPlatform.includes("tiktok") ||
     normalizedPlatform.includes("instagram") ||
+    isAmazonThumbnailUrl(thumbnailUrl) ||
     /(?:tiktokcdn|tiktokv\.com|cdninstagram|fbcdn|instagram\.com)/i.test(
       thumbnailUrl,
     )
@@ -28,6 +35,7 @@ export function getThumbnailRequestHeaders(thumbnailUrl, platform) {
   const isInstagram =
     normalizedPlatform.includes("instagram") ||
     /(?:cdninstagram|fbcdn|instagram\.com)/i.test(thumbnailUrl);
+  const isAmazon = isAmazonThumbnailUrl(thumbnailUrl);
 
   if (isTikTok) {
     return {
@@ -39,6 +47,13 @@ export function getThumbnailRequestHeaders(thumbnailUrl, platform) {
   if (isInstagram) {
     return {
       Referer: "https://www.instagram.com/",
+      "User-Agent": MOBILE_USER_AGENT,
+    };
+  }
+
+  if (isAmazon) {
+    return {
+      Referer: "https://www.amazon.com/",
       "User-Agent": MOBILE_USER_AGENT,
     };
   }

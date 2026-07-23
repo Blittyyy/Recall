@@ -12,6 +12,7 @@ import {
   X,
   Instagram,
   Youtube,
+  Globe,
   CheckCircle2,
   Clock,
   ChevronRight,
@@ -108,6 +109,7 @@ function PlatformIcon({ platform, size = 14 }) {
   if (platform === "Instagram")
     return <Instagram size={size} color="#E4405F" />;
   if (platform === "YouTube") return <Youtube size={size} color="#FF0000" />;
+  if (platform === "Web") return <Globe size={size} color="#5B6B7C" />;
   return <TikTokIcon size={size} color={BLACK} />;
 }
 

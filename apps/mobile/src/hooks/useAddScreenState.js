@@ -8,6 +8,10 @@ import { useAppearanceStore } from "../store/useAppearanceStore";
 import { fetchVideoMetadata } from "../services/videoMetadataService";
 import { createMockVideo, getCategoryMeta } from "../utils/resurfacing";
 import {
+  toAnalyticsPlatform,
+  trackEvent,
+} from "../services/analytics";
+import {
   detectPlatform,
   getGeneratedTitle,
   getSafeThumbnailUrl,
@@ -160,7 +164,10 @@ export function useAddScreenState(prefillUrl = null) {
             return null;
           }
 
-          const fallbackError = "We couldn't pull this video's details yet.";
+          const fallbackError =
+            nextPlatform === "web" || nextPlatform === "amazon"
+              ? "We couldn't pull this page's details yet."
+              : "We couldn't pull this video's details yet.";
           metadataCacheRef.current.set(metadataKey, {
             status: "error",
             data: null,
@@ -203,7 +210,7 @@ export function useAddScreenState(prefillUrl = null) {
       if (!trimmed) {
         setUrlError(null);
       } else if (!isLikelyUrl(text) || !platform) {
-        setUrlError("Paste a TikTok, Reel, or YouTube link");
+        setUrlError("Paste a TikTok, Reel, YouTube, or webpage link");
       } else {
         setUrlError(null);
       }
@@ -312,6 +319,7 @@ export function useAddScreenState(prefillUrl = null) {
       return;
     }
 
+    trackEvent("collection_created", { source: "add_flow" });
     setSelectedCollections((prev) => [...prev, createdCollection.id]);
     setShowNewCollection(false);
     setNewCollectionName("");
@@ -433,19 +441,19 @@ export function useAddScreenState(prefillUrl = null) {
 
   const handleSave = useCallback(async () => {
     if (!url.trim()) {
-      setUrlError("Paste a TikTok, Reel, or YouTube link");
+      setUrlError("Paste a TikTok, Reel, YouTube, or webpage link");
       return;
     }
 
     if (!isLikelyUrl(url)) {
-      setUrlError("Paste a TikTok, Reel, or YouTube link");
+      setUrlError("Paste a TikTok, Reel, YouTube, or webpage link");
       shakeError();
       return;
     }
 
     const platform = detectPlatform(url);
     if (!platform) {
-      setUrlError("Paste a TikTok, Reel, or YouTube link");
+      setUrlError("Paste a TikTok, Reel, YouTube, or webpage link");
       shakeError();
       return;
     }
@@ -463,11 +471,13 @@ export function useAddScreenState(prefillUrl = null) {
     const resolvedTitle =
       customTitle.trim() ||
       fetchedMetadata?.title?.trim() ||
-      getGeneratedTitle(platform);
+      getGeneratedTitle(platform, url);
     const resolvedCreator =
       customCreator.trim() ||
       fetchedMetadata?.creator?.trim() ||
-      "Unknown creator";
+      (platform === "web" || platform === "amazon"
+        ? getGeneratedTitle(platform, url)
+        : "Unknown creator");
     const resolvedThumbnailUrl =
       fetchedMetadata?.thumbnailUrl ||
       getSafeThumbnailUrl(
@@ -475,10 +485,14 @@ export function useAddScreenState(prefillUrl = null) {
         platform,
         getCategoryMeta(selectedCategory).thumbnail,
       );
+    const resolvedVideoUrl =
+      fetchedMetadata?.videoUrl?.trim() ||
+      normalizeVideoUrlForSave(url) ||
+      normalizeUrl(url) ||
+      url.trim();
 
     const video = createMockVideo({
-      videoUrl:
-        normalizeVideoUrlForSave(url) ?? normalizeUrl(url) ?? url.trim(),
+      videoUrl: resolvedVideoUrl,
       platform,
       title: resolvedTitle,
       creator: resolvedCreator,
@@ -510,6 +524,8 @@ export function useAddScreenState(prefillUrl = null) {
       ]).start();
     }
 
+    const isFirstSave = useRecallStore.getState().videos.length === 0;
+    const saveSource = prefillUrl?.trim() ? "share_extension" : "manual";
     const savedVideo = await addVideo(video);
     if (savedVideo?.blockedByPaywall) {
       setSaveState("idle");
@@ -536,6 +552,13 @@ export function useAddScreenState(prefillUrl = null) {
       return;
     }
 
+    trackEvent("save_created", {
+      platform: toAnalyticsPlatform(platform),
+      save_source: saveSource,
+      is_first_save: isFirstSave,
+      has_reminder: Boolean(reminderEnabled),
+    });
+
     setSuccessMode("saved");
     setSavedPlatform(platform);
     setSavedCategory(resolvedCategory);
@@ -554,6 +577,7 @@ export function useAddScreenState(prefillUrl = null) {
     customTitle,
     loadMetadataForUrl,
     metadataStatus,
+    prefillUrl,
     reduceMotion,
     reminderEnabled,
     saveAnim,
@@ -572,11 +596,13 @@ export function useAddScreenState(prefillUrl = null) {
   const previewTitle =
     customTitle.trim() ||
     videoMetadata?.title?.trim() ||
-    (detectedPlatform ? getGeneratedTitle(detectedPlatform) : "");
+    (detectedPlatform ? getGeneratedTitle(detectedPlatform, url) : "");
   const previewCreator =
     customCreator.trim() ||
     videoMetadata?.creator?.trim() ||
-    "Unknown creator";
+    (detectedPlatform === "web" || detectedPlatform === "amazon"
+      ? getGeneratedTitle(detectedPlatform, url)
+      : "Unknown creator");
   const previewCategory =
     selectedCategory === "other"
       ? customCategoryName.trim() || "other"

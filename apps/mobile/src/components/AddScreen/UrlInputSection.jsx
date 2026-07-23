@@ -21,6 +21,8 @@ const PLATFORM_DISPLAY = {
   tiktok: "TikTok",
   instagram: "Instagram",
   youtube: "YouTube",
+  amazon: "Amazon",
+  web: "Web",
 };
 
 export function UrlInputSection({
@@ -137,37 +139,61 @@ export function UrlInputSection({
               </View>
               <Pressable
                 onPress={onPasteFromClipboard}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingHorizontal: 26,
-                paddingTop: 22,
-                paddingBottom: 24,
-              }}
-            >
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 20,
+                  paddingTop: 18,
+                  paddingBottom: 20,
+                }}
               >
-                <Clipboard size={17} color={BLACK} />
-                <Text
+                <View
                   style={{
-                    fontSize: 14,
-                    fontFamily: "Inter_500Medium",
-                    color: BLACK,
+                    flex: 1,
+                    minWidth: 0,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  Paste from clipboard
-                </Text>
-              </View>
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 18 }}
-              >
-                <PlatformIcon platform="tiktok" size={17} />
-                <PlatformIcon platform="instagram" size={17} />
-                <PlatformIcon platform="youtube" size={17} />
-              </View>
-            </Pressable>
+                  <Clipboard size={16} color={BLACK} />
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flexShrink: 1,
+                      fontSize: 14,
+                      fontFamily: "Inter_500Medium",
+                      color: BLACK,
+                    }}
+                  >
+                    Paste from clipboard
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 7,
+                    flexShrink: 0,
+                  }}
+                >
+                  {["tiktok", "instagram", "youtube", "web"].map((platform) => (
+                    <View
+                      key={platform}
+                      style={{
+                        width: platform === "youtube" ? 20 : 16,
+                        height: 16,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <PlatformIcon platform={platform} size={14} />
+                    </View>
+                  ))}
+                </View>
+              </Pressable>
             </>
           )}
         </View>

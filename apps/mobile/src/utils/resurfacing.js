@@ -537,6 +537,8 @@ export function createMockVideo({
     tiktok: "TikTok",
     instagram: "Instagram",
     youtube: "YouTube",
+    amazon: "Amazon",
+    web: "Web",
   };
   const displayPlatform = PLATFORM_DISPLAY[platform] ?? platform;
 
@@ -544,6 +546,8 @@ export function createMockVideo({
     tiktok: "Saved TikTok Video",
     instagram: "Saved Instagram Reel",
     youtube: "Saved YouTube Video",
+    amazon: "Amazon Product",
+    web: "Saved Webpage",
   };
 
   return {

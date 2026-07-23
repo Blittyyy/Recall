@@ -5,11 +5,14 @@ import { getCategoryMeta } from "../../utils/resurfacing";
 import { getDisplayTitle } from "../../utils/titleHelpers";
 import { createThumbnailImageSource } from "../../utils/thumbnailImageSource";
 import { WHITE, BLACK, GREY_TEXT } from "../../constants/addScreen";
+import { useRecallTheme } from "../../constants/recallTheme";
 
 const PLATFORM_DISPLAY = {
   tiktok: "TikTok",
   instagram: "Instagram",
   youtube: "YouTube",
+  amazon: "Amazon",
+  web: "Web",
 };
 
 export function VideoPreviewCard({
@@ -21,6 +24,7 @@ export function VideoPreviewCard({
   metadataStatus,
   previewAnim,
 }) {
+  const theme = useRecallTheme();
   if (!detectedPlatform) return null;
 
   const catMeta = getCategoryMeta(selectedCategory ?? "other");
@@ -32,13 +36,21 @@ export function VideoPreviewCard({
     fallbackTitle,
   );
   const creator = previewCreator?.trim() || "Unknown creator";
+  // Platform sits on a light badge — always true black.
+  const platformLabelColor = "#1E1915";
+  // Category sits on a dark badge — match warm title cream/tan.
+  const categoryLabelColor = theme.dark ? theme.text : "#FFFCF8";
 
   const helperText =
     metadataStatus === "loading"
-      ? "Fetching the real title, creator, and thumbnail..."
+      ? detectedPlatform === "web" || detectedPlatform === "amazon"
+        ? "Fetching the page title, site, and thumbnail..."
+        : "Fetching the real title, creator, and thumbnail..."
       : metadataStatus === "error"
         ? "We couldn't load the details automatically. You can edit them below."
-        : "Ready to save with the video details we found.";
+        : detectedPlatform === "web" || detectedPlatform === "amazon"
+          ? "Ready to save with the page details we found."
+          : "Ready to save with the video details we found.";
 
   return (
     <Animated.View
@@ -110,7 +122,7 @@ export function VideoPreviewCard({
               style={{
                 fontSize: 12,
                 fontFamily: "Inter_600SemiBold",
-                color: BLACK,
+                color: platformLabelColor,
               }}
             >
               {platformLabel}
@@ -135,7 +147,7 @@ export function VideoPreviewCard({
               style={{
                 fontSize: 11,
                 fontFamily: "Inter_500Medium",
-                color: WHITE,
+                color: categoryLabelColor,
               }}
             >
               {catMeta.label}

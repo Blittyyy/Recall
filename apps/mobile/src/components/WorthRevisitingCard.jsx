@@ -3,21 +3,22 @@ import { Animated, Pressable, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Clock, Play } from "lucide-react-native";
 import { PlatformIcon } from "./AddScreen/PlatformIcon";
-import { RECALL_COLORS } from "../constants/recallTheme";
+import { RECALL_COLORS, useRecallTheme } from "../constants/recallTheme";
 import { getCategoryMeta, getSavedWeeksLabel } from "../utils/resurfacing";
+import { getOpenActionLabel } from "../utils/openActionLabel";
 import { getDisplayTitle } from "../utils/titleHelpers";
 import { RemoteThumbnailImage } from "../components/RemoteThumbnailImage";
 
-const WHITE = RECALL_COLORS.surfaceStrong;
-const BLACK = RECALL_COLORS.text;
 const GREY_TEXT = RECALL_COLORS.mutedText;
 const GREY_LIGHT = RECALL_COLORS.subtleStrong;
 const GREY_MID = RECALL_COLORS.mid;
-const WARM_SURFACE = RECALL_COLORS.surface;
+const WARM_SURFACE = RECALL_COLORS.surfaceStrong;
 const TAN_BORDER = RECALL_COLORS.border;
 const TAN_TEXT = RECALL_COLORS.secondaryText;
 const TAN_SHADOW = RECALL_COLORS.shadow;
 const HOME_TEXT = RECALL_COLORS.text;
+const INVERSE = RECALL_COLORS.inverse;
+const ON_INVERSE = RECALL_COLORS.onInverse;
 const SERIF = "Georgia";
 
 export function WorthRevisitingCard({
@@ -28,8 +29,12 @@ export function WorthRevisitingCard({
   onNotNow,
   wrapperStyle,
 }) {
+  const theme = useRecallTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const meta = getCategoryMeta(video.category);
+  const openActionLabel = getOpenActionLabel(video);
+  const creatorLabel =
+    typeof video.creator === "string" ? video.creator.trim() : "";
 
   const handleIn = () =>
     Animated.spring(scaleAnim, {
@@ -62,11 +67,13 @@ export function WorthRevisitingCard({
           overflow: "hidden",
           borderRadius: 26,
           backgroundColor: WARM_SURFACE,
+          borderWidth: theme.dark ? 1 : 0,
+          borderColor: TAN_BORDER,
           shadowColor: TAN_SHADOW,
-          shadowOffset: { width: 0, height: 7 },
-          shadowOpacity: 0.1,
-          shadowRadius: 22,
-          elevation: 4,
+          shadowOffset: { width: 0, height: theme.dark ? 10 : 7 },
+          shadowOpacity: theme.dark ? 0.45 : 0.1,
+          shadowRadius: theme.dark ? 18 : 22,
+          elevation: theme.dark ? 6 : 4,
         }}
       >
         <View
@@ -88,7 +95,7 @@ export function WorthRevisitingCard({
 
           <LinearGradient
             pointerEvents="none"
-            colors={["transparent", "rgba(17,13,10,0.12)"]}
+            colors={["transparent", "rgba(17,13,10,0.18)"]}
             locations={[0.68, 1]}
             style={{
               position: "absolute",
@@ -119,10 +126,10 @@ export function WorthRevisitingCard({
                 borderRadius: 9,
                 paddingHorizontal: 8,
                 paddingVertical: 5,
-                backgroundColor: "rgba(255,252,248,0.96)",
+                backgroundColor: "rgba(246,240,232,0.96)",
                 shadowColor: "#000",
                 shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.08,
+                shadowOpacity: 0.12,
                 shadowRadius: 7,
                 elevation: 2,
                 flexShrink: 1,
@@ -134,7 +141,7 @@ export function WorthRevisitingCard({
                 style={{
                   fontSize: 10,
                   fontFamily: "Inter_600SemiBold",
-                  color: BLACK,
+                  color: "#1E1915",
                 }}
               >
                 {video.platform}
@@ -149,17 +156,19 @@ export function WorthRevisitingCard({
                 borderRadius: 9,
                 paddingHorizontal: 8,
                 paddingVertical: 5,
-                backgroundColor: "rgba(25,20,16,0.74)",
+                backgroundColor: "rgba(18,14,11,0.88)",
+                borderWidth: 1,
+                borderColor: "rgba(240,230,218,0.28)",
                 flexShrink: 1,
               }}
             >
-              <Clock size={9} color="rgba(255,255,255,0.9)" />
+              <Clock size={9} color="#F3E9DD" />
               <Text
                 numberOfLines={1}
                 style={{
                   fontSize: 10,
                   fontFamily: "Inter_600SemiBold",
-                  color: WHITE,
+                  color: "#F3E9DD",
                 }}
               >
                 Saved {getSavedWeeksLabel(video.savedAt)}
@@ -176,6 +185,7 @@ export function WorthRevisitingCard({
           }}
         >
           <Text
+            numberOfLines={3}
             style={{
               fontSize: 19,
               lineHeight: 24,
@@ -187,18 +197,20 @@ export function WorthRevisitingCard({
             {getDisplayTitle(video.title)}
           </Text>
 
-          <Text
-            numberOfLines={1}
-            style={{
-              marginTop: 4,
-              fontSize: 13,
-              lineHeight: 18,
-              fontFamily: "Inter_400Regular",
-              color: GREY_TEXT,
-            }}
-          >
-            {video.creator}
-          </Text>
+          {creatorLabel ? (
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: 4,
+                fontSize: 13,
+                lineHeight: 18,
+                fontFamily: "Inter_400Regular",
+                color: GREY_TEXT,
+              }}
+            >
+              {creatorLabel}
+            </Text>
+          ) : null}
 
           <View
             style={{
@@ -259,18 +271,22 @@ export function WorthRevisitingCard({
                 justifyContent: "center",
                 gap: 8,
                 borderRadius: 15,
-                backgroundColor: pressed ? "#2B2825" : BLACK,
+                backgroundColor: pressed
+                  ? theme.dark
+                    ? "#D8CFC3"
+                    : "#2B2825"
+                  : INVERSE,
               })}
             >
-              <Play size={13} color={WHITE} fill={WHITE} />
+              <Play size={13} color={ON_INVERSE} fill={ON_INVERSE} />
               <Text
                 style={{
                   fontSize: 13,
                   fontFamily: "Inter_600SemiBold",
-                  color: WHITE,
+                  color: ON_INVERSE,
                 }}
               >
-                Open Video
+                {openActionLabel}
               </Text>
             </Pressable>
 

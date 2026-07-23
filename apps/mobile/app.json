@@ -1,6 +1,7 @@
 {
   "expo": {
-    "name": "Anything mobile app",
+    "name": "Recall",
+    "slug": "anything-mobile-app",
     "scheme": "recall",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,13 +14,14 @@
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "infoPlist": {
+        "CFBundleDisplayName": "Recall",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#FBE9D1"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -48,7 +50,8 @@
         "expo-build-properties",
         {
           "ios": {
-            "useFrameworks": "static"
+            "useFrameworks": "static",
+            "buildReactNativeFromSource": true
           }
         }
       ],
@@ -63,7 +66,9 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-asset",
-      "@bacons/apple-targets"
+      "expo-notifications",
+      "@bacons/apple-targets",
+      "expo-localization"
     ],
     "web": {
       "bundler": "metro",

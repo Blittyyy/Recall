@@ -13,6 +13,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Instagram,
+  Globe,
   ChevronRight,
   Clock,
   X,
@@ -45,7 +46,11 @@ import { useSupabaseSessionStore } from "../../store/useSupabaseSessionStore";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { RecallSyncState } from "../../components/RecallSyncState";
 import { TikTokIcon } from "../../components/AddScreen/TikTokIcon";
-import { getRecallProfile } from "../../services/supabaseClient";
+import { getRecallProfile, isUsableRecallDisplayName } from "../../services/supabaseClient";
+import {
+  toAnalyticsPlatform,
+  trackEvent,
+} from "../../services/analytics";
 import {
   getHomeWorthRevisitingVideos,
   getHomeWorthRevisitingVideosNeedingExpiry,
@@ -69,7 +74,7 @@ import {
   getHomeCardEnterDelay,
   HomeCardEnter,
 } from "../../components/HomeCardEnter";
-import { RECALL_COLORS } from "../../constants/recallTheme";
+import { RECALL_COLORS, useRecallTheme } from "../../constants/recallTheme";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 const BG = RECALL_COLORS.background;
@@ -80,7 +85,7 @@ const GREY_LIGHT = RECALL_COLORS.subtleStrong;
 const GREY_MID = RECALL_COLORS.mid;
 const BLUE = "#007AFF";
 const WARM_BG = RECALL_COLORS.background;
-const WARM_SURFACE = RECALL_COLORS.surface;
+const WARM_SURFACE = RECALL_COLORS.surfaceStrong;
 const SEARCH_FILL = RECALL_COLORS.surface;
 const SEARCH_BORDER = RECALL_COLORS.border;
 const TAN_BORDER = RECALL_COLORS.border;
@@ -95,6 +100,7 @@ const HOME_CARD_W = (SCREEN_W - 40 - HOME_GRID_GAP) / 2;
 const HOME_STAT_W = Math.min(68, Math.max(58, (SCREEN_W - 174) / 3));
 const HOME_BANNER_IMAGE = require("../../../assets/images/home-bottom-card.png");
 const YOUTUBE_LOGO = require("../../../assets/images/youtube-logo.png");
+const AMAZON_LOGO = require("../../../assets/images/amazon-logo.png");
 const SAVED_FOR_LATER_IMAGE = require("../../../assets/images/saved-for-later.png");
 const REMINDER_CARD_MIN_HEIGHT = 106;
 const REMINDER_CARD_MARGIN = 10;
@@ -161,35 +167,37 @@ function YouTubeLogo({ size = 12 }) {
     />
   );
 }
+function AmazonLogo({ size = 12 }) {
+  return (
+    <Image
+      source={AMAZON_LOGO}
+      style={{ width: size * 1.15, height: size * 1.15 }}
+      contentFit="contain"
+    />
+  );
+}
 function PlatformIcon({ platform, size = 12 }) {
   if (platform === "Instagram")
     return <Instagram size={size} color="#E4405F" />;
   if (platform === "YouTube") return <YouTubeLogo size={size} />;
-  return <TikTokIcon size={size} color={BLACK} />;
-}
-
-function getEmailHandle(email) {
-  return email?.split("@")?.[0]?.trim() || "";
-}
-
-function isApplePrivateRelayEmail(email) {
-  return typeof email === "string" && email.trim().toLowerCase().endsWith("@privaterelay.appleid.com");
-}
-
-function isUsableDisplayName(value) {
-  return typeof value === "string" && value.trim().length > 0 && !value.includes("@");
+  if (platform === "Amazon") return <AmazonLogo size={size} />;
+  if (platform === "Web") return <Globe size={size} color="#5B6B7C" />;
+  return <TikTokIcon size={size} color="#1E1915" />;
 }
 
 function getDisplayName({ profile, user }) {
-  const emailHandle = getEmailHandle(user?.email);
+  const email = user?.email ?? null;
   return (
-    (isUsableDisplayName(profile?.display_name) ? profile.display_name.trim() : "") ||
-    (isUsableDisplayName(user?.user_metadata?.display_name)
+    (isUsableRecallDisplayName(profile?.display_name, email)
+      ? profile.display_name.trim()
+      : "") ||
+    (isUsableRecallDisplayName(user?.user_metadata?.display_name, email)
       ? user.user_metadata.display_name.trim()
       : "") ||
-    (isUsableDisplayName(user?.user_metadata?.name) ? user.user_metadata.name.trim() : "") ||
-    (isApplePrivateRelayEmail(user?.email) ? "" : emailHandle) ||
-    "Recall User"
+    (isUsableRecallDisplayName(user?.user_metadata?.name, email)
+      ? user.user_metadata.name.trim()
+      : "") ||
+    "there"
   );
 }
 
@@ -242,6 +250,22 @@ function SectionHeader({
   subtitleOneLine = false,
   overlayAction = false,
 }) {
+  const theme = useRecallTheme();
+  const accentColor = theme.dark ? theme.accent : TAN_ACCENT;
+  const titleColor = editorial
+    ? theme.dark
+      ? theme.text
+      : HOME_TEXT
+    : BLACK;
+  const subtitleColor = editorial
+    ? theme.dark
+      ? theme.secondaryText
+      : TAN_TEXT
+    : GREY_TEXT;
+  // Use warm sand/tan accent — DynamicColorIOS can stay "light" black when
+  // the in-app theme is Dark but the system scheme is still light.
+  const actionColor = editorial ? accentColor : BLUE;
+
   return (
     <View
       style={{
@@ -260,7 +284,7 @@ function SectionHeader({
               width: 3,
               height: subtitle ? 72 : 44,
               borderRadius: 2,
-              backgroundColor: TAN_ACCENT,
+              backgroundColor: accentColor,
               marginRight: 14,
               marginTop: 0,
             }}
@@ -280,7 +304,7 @@ function SectionHeader({
             style={{
               fontSize: editorial ? 22 : 19,
               fontFamily: editorial ? SERIF : "Inter_700Bold",
-              color: editorial ? HOME_TEXT : BLACK,
+              color: titleColor,
               letterSpacing: editorial ? -0.8 : -0.5,
               lineHeight: editorial ? 30 : 24,
             }}
@@ -293,7 +317,7 @@ function SectionHeader({
             style={{
               fontSize: 13,
               fontFamily: "Inter_400Regular",
-              color: editorial ? TAN_TEXT : GREY_TEXT,
+              color: subtitleColor,
               paddingLeft: icon ? (editorial ? 0 : 25) : 0,
               lineHeight: editorial ? 21 : undefined,
             }}
@@ -322,12 +346,12 @@ function SectionHeader({
             style={{
               fontSize: 14,
               fontFamily: editorial ? SERIF : "Inter_500Medium",
-              color: editorial ? HOME_TEXT : BLUE,
+              color: actionColor,
             }}
           >
             {action}
           </Text>
-          <ChevronRight size={14} color={editorial ? HOME_TEXT : BLUE} />
+          <ChevronRight size={14} color={actionColor} />
         </Pressable>
       ) : null}
     </View>
@@ -460,7 +484,7 @@ function LegacyWorthRevisitingCard({
                 style={{
                   fontSize: 12,
                   fontFamily: "Inter_600SemiBold",
-                  color: BLACK,
+                  color: "#1E1915",
                 }}
               >
                 {video.platform}
@@ -641,6 +665,7 @@ function LegacyWorthRevisitingCard({
 
 // ─── Recently Saved portrait card ─────────────────────────────────────────────
 function RecentCard({ video, onPress }) {
+  const theme = useRecallTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const handleIn = () =>
     Animated.spring(scaleAnim, {
@@ -656,6 +681,9 @@ function RecentCard({ video, onPress }) {
       tension: 220,
       friction: 10,
     }).start();
+
+  // Always a warm cream on the dark gradient — matches section title tone in dark mode.
+  const overlayTitleColor = theme.dark ? theme.text : "#F7F2EC";
 
   return (
     <Animated.View
@@ -763,7 +791,7 @@ function RecentCard({ video, onPress }) {
               style={{
                 fontSize: 11.5,
                 fontFamily: SERIF,
-                color: WHITE,
+                color: overlayTitleColor,
                 lineHeight: 15,
                 letterSpacing: -0.18,
                 marginBottom: 7,
@@ -1193,6 +1221,7 @@ export default function HomeScreen() {
     (s) => s.expireFromHomeWorthRevisiting,
   );
   const [profile, setProfile] = useState(null);
+  const theme = useRecallTheme();
   const openVideoDetail = (videoId) =>
     router.push({
       pathname: "/video-detail",
@@ -1322,6 +1351,9 @@ export default function HomeScreen() {
   });
 
   const handleWatchResurfaced = async (video) => {
+    trackEvent("worth_revisiting_opened", {
+      item_platform: toAnalyticsPlatform(video?.platform),
+    });
     clearFromHomeWorthRevisiting(video.id);
     markOpened(video.id);
     try {
@@ -1475,7 +1507,7 @@ export default function HomeScreen() {
                   label: "YouTube",
                 },
                 {
-                  icon: <TikTokIcon size={11} color={BLACK} />,
+                  icon: <TikTokIcon size={11} color="#1E1915" />,
                   count: ttCount,
                   label: "TikTok",
                 },
@@ -1542,12 +1574,14 @@ export default function HomeScreen() {
                 <Image
                   source={SAVED_FOR_LATER_IMAGE}
                   contentFit="contain"
+                  tintColor={theme.dark ? theme.accent : undefined}
                   style={{
                     position: "absolute",
                     width: 142,
                     height: 76,
                     left: -12,
                     top: -19,
+                    opacity: theme.dark ? 0.82 : 1,
                   }}
                 />
               </View>
@@ -1593,6 +1627,9 @@ export default function HomeScreen() {
               enterBaseDelay={40}
               videos={homeWorthRevisiting}
               onPress={(video) => {
+                trackEvent("worth_revisiting_opened", {
+                  item_platform: toAnalyticsPlatform(video?.platform),
+                });
                 markOpened(video.id);
                 openVideoDetail(video.id);
               }}
@@ -1867,7 +1904,7 @@ export default function HomeScreen() {
               style={{
                 marginTop: 32,
                 marginHorizontal: 20,
-                backgroundColor: "#FFFCF8",
+                backgroundColor: WHITE,
                 borderRadius: 28,
                 overflow: "hidden",
                 shadowColor: TAN_SHADOW,
@@ -1895,6 +1932,34 @@ export default function HomeScreen() {
                   contentFit="cover"
                   contentPosition="left center"
                 />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={
+                    theme.dark
+                      ? [
+                          "rgba(22,17,13,0.78)",
+                          "rgba(22,17,13,0.42)",
+                          "rgba(22,17,13,0.08)",
+                          "transparent",
+                        ]
+                      : [
+                          "rgba(255,252,248,0.42)",
+                          "rgba(255,252,248,0.18)",
+                          "transparent",
+                          "transparent",
+                        ]
+                  }
+                  locations={[0, 0.42, 0.7, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                  }}
+                />
               </View>
               <View
                 style={{
@@ -1910,7 +1975,7 @@ export default function HomeScreen() {
                   style={{
                     fontSize: 21,
                     fontFamily: SERIF,
-                    color: HOME_TEXT,
+                    color: theme.dark ? "#F0E6DA" : HOME_TEXT,
                     lineHeight: 28,
                     letterSpacing: -0.6,
                     marginBottom: 8,
@@ -1924,7 +1989,7 @@ export default function HomeScreen() {
                   style={{
                     fontSize: 12,
                     fontFamily: "Inter_400Regular",
-                    color: TAN_TEXT,
+                    color: theme.dark ? "#D2C4B4" : TAN_TEXT,
                     lineHeight: 18,
                     textAlign: "left",
                   }}

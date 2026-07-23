@@ -1,6 +1,7 @@
 import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
+import * as Linking from "expo-linking";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseKey =
@@ -18,12 +19,48 @@ export function isApplePrivateRelayEmail(email?: string | null) {
   );
 }
 
+export function getEmailLocalPart(email?: string | null) {
+  if (typeof email !== "string") {
+    return "";
+  }
+
+  return email.split("@")[0]?.trim() || "";
+}
+
 export function isLikelyEmailAddress(value?: string | null) {
   return typeof value === "string" && value.includes("@");
 }
 
-export function isUsableRecallDisplayName(value?: string | null) {
-  return typeof value === "string" && value.trim().length > 0 && !isLikelyEmailAddress(value);
+export function isEmailDerivedDisplayName(
+  value?: string | null,
+  email?: string | null,
+) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (isLikelyEmailAddress(trimmed)) {
+    return true;
+  }
+
+  const localPart = getEmailLocalPart(email).toLowerCase();
+  return Boolean(localPart) && trimmed.toLowerCase() === localPart;
+}
+
+export function isUsableRecallDisplayName(
+  value?: string | null,
+  email?: string | null,
+) {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    !isEmailDerivedDisplayName(value, email)
+  );
 }
 
 function assertSupabaseEnvConfigured() {
@@ -33,17 +70,21 @@ function assertSupabaseEnvConfigured() {
 }
 
 function resolveDisplayName(user: any) {
+  const email = user?.email ?? null;
   return (
-    (isUsableRecallDisplayName(user?.user_metadata?.display_name)
+    (isUsableRecallDisplayName(user?.user_metadata?.display_name, email)
       ? user.user_metadata.display_name
       : null) ??
-    (isUsableRecallDisplayName(user?.user_metadata?.name)
+    (isUsableRecallDisplayName(user?.user_metadata?.name, email)
       ? user.user_metadata.name
       : null) ??
-    (isUsableRecallDisplayName(user?.display_name) ? user.display_name : null) ??
-    (isUsableRecallDisplayName(user?.displayName) ? user.displayName : null) ??
-    (isUsableRecallDisplayName(user?.name) ? user.name : null) ??
-    (isApplePrivateRelayEmail(user?.email) ? null : user?.email) ??
+    (isUsableRecallDisplayName(user?.display_name, email)
+      ? user.display_name
+      : null) ??
+    (isUsableRecallDisplayName(user?.displayName, email)
+      ? user.displayName
+      : null) ??
+    (isUsableRecallDisplayName(user?.name, email) ? user.name : null) ??
     null
   );
 }
@@ -93,11 +134,14 @@ export async function getCurrentSupabaseSession() {
 }
 
 export function listenToSupabaseAuth(
-  callback: (session: any | null) => void | Promise<void>,
+  callback: (
+    session: any | null,
+    event?: string,
+  ) => void | Promise<void>,
 ) {
   assertSupabaseEnvConfigured();
-  return supabase.auth.onAuthStateChange((_event, session) => {
-    callback(session);
+  return supabase.auth.onAuthStateChange((event, session) => {
+    callback(session, event);
   });
 }
 
@@ -182,21 +226,99 @@ export async function signUpToRecall({
   return data;
 }
 
+export function getRecallPasswordResetRedirectUrl() {
+  // Always use the native app scheme. Linking.createURL() can return
+  // http://localhost / exp:// during Metro, which opens a black Safari page.
+  return "recall://reset-password";
+}
+
 export async function requestRecallPasswordReset({
   email,
 }: {
   email: string;
 }) {
   assertSupabaseEnvConfigured();
-  const redirectTo = process.env.EXPO_PUBLIC_APP_URL;
+  const redirectTo = getRecallPasswordResetRedirectUrl();
   const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: redirectTo || undefined,
+    redirectTo,
   });
 
   if (error) {
     throw error;
   }
 
+  return data;
+}
+
+export async function createSessionFromAuthUrl(url: string) {
+  assertSupabaseEnvConfigured();
+  if (!url || typeof url !== "string") {
+    return null;
+  }
+
+  // Supabase may return tokens in the hash; normalize for parsing.
+  const normalized = url.replace(/#/g, "?");
+  const parsed = Linking.parse(normalized);
+  const params = (parsed.queryParams ?? {}) as Record<
+    string,
+    string | string[] | undefined
+  >;
+
+  const readParam = (key: string) => {
+    const value = params[key];
+    return typeof value === "string" ? value : Array.isArray(value) ? value[0] : null;
+  };
+
+  const errorDescription =
+    readParam("error_description") || readParam("error");
+  if (errorDescription) {
+    throw new Error(errorDescription);
+  }
+
+  const code = readParam("code");
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      throw error;
+    }
+    return {
+      session: data.session,
+      isRecovery: readParam("type") === "recovery",
+    };
+  }
+
+  const accessToken = readParam("access_token");
+  const refreshToken = readParam("refresh_token");
+
+  if (!accessToken || !refreshToken) {
+    return null;
+  }
+
+  const { data, error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    session: data.session,
+    isRecovery: readParam("type") === "recovery",
+  };
+}
+
+export async function updateRecallPassword({
+  password,
+}: {
+  password: string;
+}) {
+  assertSupabaseEnvConfigured();
+  const { data, error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    throw error;
+  }
   return data;
 }
 
@@ -218,10 +340,19 @@ export async function ensureRecallProfile({
     throw new Error("Missing authenticated user for Recall sync.");
   }
 
+  const email = user?.email ?? null;
+  const existing = await getRecallProfile(user.id).catch(() => null);
+  const resolvedName = resolveDisplayName(user);
+  const displayName = isUsableRecallDisplayName(resolvedName, email)
+    ? resolvedName.trim()
+    : isUsableRecallDisplayName(existing?.display_name, email)
+      ? existing.display_name.trim()
+      : null;
+
   const payload = {
     id: user.id,
-    display_name: resolveDisplayName(user),
-    avatar_url: resolveAvatarUrl(user),
+    display_name: displayName,
+    avatar_url: resolveAvatarUrl(user) || existing?.avatar_url || null,
   };
 
   const { error } = await supabase.from("profiles").upsert(payload, {
@@ -318,6 +449,21 @@ export function getFriendlySupabaseError(error: any, fallback: string) {
     message.includes("weak_password")
   ) {
     return "Choose a password with at least 6 characters.";
+  }
+
+  if (
+    message.includes("For security purposes") ||
+    message.includes("only request this after") ||
+    message.includes("rate limit")
+  ) {
+    return "Please wait a moment before requesting another reset email.";
+  }
+
+  if (
+    message.includes("redirect_to") ||
+    message.includes("Redirect URL")
+  ) {
+    return "Password reset is misconfigured. Add Recall’s deep link to Supabase redirect URLs.";
   }
 
   if (

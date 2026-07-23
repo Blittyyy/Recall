@@ -9,7 +9,10 @@ import {
 import { Check } from "lucide-react-native";
 import { RecallReminderIcon } from "./RecallReminderIcon";
 import { usePaywallStore } from "../store/usePaywallStore";
-import { PAYWALL_TRIGGERS } from "../utils/freemium";
+import {
+  areFreemiumLimitsEnforced,
+  PAYWALL_TRIGGERS,
+} from "../utils/freemium";
 import { RECALL_COLORS } from "../constants/recallTheme";
 
 const BG = RECALL_COLORS.subtle;
@@ -50,6 +53,7 @@ export function RecallPaywallModal() {
   const isVisible = usePaywallStore((state) => state.isVisible);
   const trigger = usePaywallStore((state) => state.trigger);
   const hidePaywall = usePaywallStore((state) => state.hidePaywall);
+  const purchasesAvailable = areFreemiumLimitsEnforced();
 
   if (!fontsLoaded) return null;
 
@@ -120,7 +124,9 @@ export function RecallPaywallModal() {
               marginBottom: 24,
             }}
           >
-            Recall Pro helps saved moments return at the right time.
+            {purchasesAvailable
+              ? "Recall Pro helps saved moments return at the right time."
+              : "Recall Pro is coming soon. This TestFlight build does not include purchases yet."}
           </Text>
 
           <View
@@ -169,26 +175,48 @@ export function RecallPaywallModal() {
             ))}
           </View>
 
-          <Pressable
-            onPress={hidePaywall}
-            style={({ pressed }) => ({
-              borderRadius: 20,
-              backgroundColor: pressed ? "#1F1F1F" : BLACK,
-              paddingVertical: 16,
-              alignItems: "center",
-              marginBottom: 13,
-            })}
-          >
-            <Text
+          {purchasesAvailable ? (
+            <Pressable
+              onPress={hidePaywall}
+              style={({ pressed }) => ({
+                borderRadius: 20,
+                backgroundColor: pressed ? "#1F1F1F" : BLACK,
+                paddingVertical: 16,
+                alignItems: "center",
+                marginBottom: 13,
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontFamily: "Inter_600SemiBold",
+                  color: WHITE,
+                }}
+              >
+                Upgrade to Recall Pro
+              </Text>
+            </Pressable>
+          ) : (
+            <View
               style={{
-                fontSize: 15,
-                fontFamily: "Inter_600SemiBold",
-                color: WHITE,
+                borderRadius: 20,
+                backgroundColor: "#E8E2DA",
+                paddingVertical: 16,
+                alignItems: "center",
+                marginBottom: 13,
               }}
             >
-              Upgrade to Recall Pro
-            </Text>
-          </Pressable>
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontFamily: "Inter_600SemiBold",
+                  color: "#8A8178",
+                }}
+              >
+                Coming soon
+              </Text>
+            </View>
+          )}
 
           <Pressable
             onPress={hidePaywall}
@@ -205,7 +233,7 @@ export function RecallPaywallModal() {
                 color: GREY_TEXT,
               }}
             >
-              Maybe later
+              {purchasesAvailable ? "Maybe later" : "Continue"}
             </Text>
           </Pressable>
 
@@ -219,7 +247,9 @@ export function RecallPaywallModal() {
               textAlign: "center",
             }}
           >
-            Users revisit more saved videos with Pro.
+            {purchasesAvailable
+              ? getTriggerSubtitle(trigger)
+              : "Purchases and restore are unavailable in this beta."}
           </Text>
         </View>
       </View>

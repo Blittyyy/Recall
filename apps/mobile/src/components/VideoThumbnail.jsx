@@ -5,6 +5,7 @@ import { useThumbnailImageSource } from "../hooks/useThumbnailImageSource";
 import { getThumbnailFallbackUrls } from "../utils/thumbnailImageSource";
 import { isVideoUnavailable } from "../utils/videoAvailability";
 import { useRecallStore } from "../store/useRecallStore";
+import { getPlatformDisplayName, resolvePlatformKey } from "../utils/urlHelpers";
 
 function getVariantStyle(variant, platform) {
   const normalizedPlatform = (platform ?? "").toLowerCase();
@@ -71,6 +72,9 @@ export function VideoThumbnail({
   const badgePaddingHorizontal = variant === "detailHero" ? 11 : 6;
   const badgePaddingVertical = variant === "detailHero" ? 7 : 4;
   const badgeOffset = variant === "detailHero" ? 14 : 8;
+  const badgeLabelSize = variant === "detailHero" ? 12 : 10;
+  const resolvedPlatformKey = resolvePlatformKey(platform, videoUrl);
+  const platformLabel = getPlatformDisplayName(platform, videoUrl);
   const resolvedImageStyle = [
     { width: "100%", height: "100%" },
     variant === "detailHero" ? { transform: [{ scale: 1.12 }] } : null,
@@ -114,13 +118,35 @@ export function VideoThumbnail({
             position: "absolute",
             top: badgeOffset,
             left: badgeOffset,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
             backgroundColor: "rgba(255,255,255,0.94)",
             borderRadius: variant === "detailHero" ? 18 : 10,
             paddingHorizontal: badgePaddingHorizontal,
             paddingVertical: badgePaddingVertical,
+            maxWidth: "78%",
           }}
         >
-          <PlatformIcon platform={platform} size={badgeSize} />
+          <PlatformIcon
+            platform={resolvedPlatformKey ?? platform}
+            url={videoUrl}
+            size={badgeSize}
+            color="#1E1915"
+          />
+          {platformLabel ? (
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: badgeLabelSize,
+                fontFamily: "Inter_600SemiBold",
+                color: "#1E1915",
+                flexShrink: 1,
+              }}
+            >
+              {platformLabel}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 

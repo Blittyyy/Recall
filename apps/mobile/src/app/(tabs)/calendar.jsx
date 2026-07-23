@@ -1,6 +1,16 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronDown, Play } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
+import Reanimated, {
+  Easing,
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { RecallReminderIcon } from "../../components/RecallReminderIcon";
 import { RecallActionIcon } from "../../components/RecallActionIcon";
 import {
@@ -12,6 +22,7 @@ import {
 } from "@expo-google-fonts/dev";
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "expo-router";
+import { useAppearanceStore } from "../../store/useAppearanceStore";
 import { useRecallStore } from "../../store/useRecallStore";
 import { getReminderVideos, getNextReminderDate, formatReminderScheduleLabel } from "../../utils/resurfacing";
 import { getDisplayTitle } from "../../utils/titleHelpers";
@@ -22,16 +33,47 @@ import { VideoThumbnail } from "../../components/VideoThumbnail";
 import { RECALL_COLORS } from "../../constants/recallTheme";
 
 const BG = RECALL_COLORS.background;
-const SURFACE = RECALL_COLORS.surface;
+const SURFACE = RECALL_COLORS.surfaceStrong;
 const TEXT = RECALL_COLORS.text;
 const MUTED = RECALL_COLORS.secondaryText;
 const BORDER = RECALL_COLORS.border;
 const ACCENT = RECALL_COLORS.accent;
 const ACCENT_SOFT = RECALL_COLORS.subtle;
 const WHITE = RECALL_COLORS.surfaceStrong;
+const INVERSE = RECALL_COLORS.inverse;
+const ON_INVERSE = RECALL_COLORS.onInverse;
+const PRESSED = RECALL_COLORS.subtleStrong;
 const SERIF = "Georgia";
 
-const FILTERS = ["All", "Today", "This Week", "Later"];
+const FILTERS = ["All", "Today", "Tomorrow", "This Week", "Next Week", "Later"];
+
+const FILTER_MIN_WIDTH = {
+  All: 76,
+  Today: 76,
+  Tomorrow: 108,
+  "This Week": 116,
+  "Next Week": 116,
+  Later: 76,
+};
+
+const SECTION_LAYOUT = LinearTransition.duration(340).easing(
+  Easing.bezier(0.22, 1, 0.36, 1),
+);
+const CHEVRON_SPRING = { damping: 18, stiffness: 240, mass: 0.7 };
+
+function getCardEntering(index, reduceMotion) {
+  if (reduceMotion) return undefined;
+  return FadeInDown.springify()
+    .damping(19)
+    .stiffness(190)
+    .mass(0.8)
+    .delay(Math.min(index, 5) * 40);
+}
+
+function getCardExiting(reduceMotion) {
+  if (reduceMotion) return undefined;
+  return FadeOutUp.duration(210).easing(Easing.in(Easing.cubic));
+}
 
 const SECTION_META = {
   today: {
@@ -44,6 +86,10 @@ const SECTION_META = {
   },
   thisWeek: {
     label: "This Week",
+    iconName: "this-week",
+  },
+  nextWeek: {
+    label: "Next Week",
     iconName: "this-week",
   },
   later: {
@@ -63,20 +109,43 @@ function getReminderBucket(nextDate, now = new Date()) {
   if (daysAway <= 0) return "today";
   if (daysAway === 1) return "tomorrow";
   if (daysAway <= 7) return "thisWeek";
+  if (daysAway <= 14) return "nextWeek";
   return "later";
 }
 
-function ReminderSectionHeader({ sectionKey, count }) {
+function ReminderSectionHeader({
+  sectionKey,
+  count,
+  expanded,
+  onToggle,
+  reduceMotion,
+}) {
   const { label, iconName } = SECTION_META[sectionKey];
+  const rotation = useSharedValue(expanded ? 0 : -90);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      rotation.value = expanded ? 0 : -90;
+      return;
+    }
+    rotation.value = withSpring(expanded ? 0 : -90, CHEVRON_SPRING);
+  }, [expanded, reduceMotion, rotation]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
 
   return (
-    <View
-      style={{
+    <Pressable
+      onPress={onToggle}
+      hitSlop={6}
+      style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
         marginBottom: 11,
         paddingHorizontal: 2,
-      }}
+        opacity: pressed ? 0.82 : 1,
+      })}
     >
       <View
         style={{
@@ -112,8 +181,10 @@ function ReminderSectionHeader({ sectionKey, count }) {
       >
         {count}
       </Text>
-      <ChevronDown size={16} color={MUTED} strokeWidth={1.8} />
-    </View>
+      <Reanimated.View style={chevronStyle}>
+        <ChevronDown size={16} color={MUTED} strokeWidth={1.8} />
+      </Reanimated.View>
+    </Pressable>
   );
 }
 
@@ -126,7 +197,7 @@ function ReminderCard({ item, onOpen, onEdit }) {
       onPress={onOpen}
       style={({ pressed }) => ({
         minHeight: 138,
-        backgroundColor: pressed ? "#FBF7F2" : SURFACE,
+        backgroundColor: pressed ? PRESSED : SURFACE,
         borderRadius: 24,
         flexDirection: "row",
         alignItems: "flex-start",
@@ -151,28 +222,7 @@ function ReminderCard({ item, onOpen, onEdit }) {
           borderRadius: 20,
         }}
         imageStyle={{ transform: [{ scale: 1.24 }] }}
-      >
-        <View
-          style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 8,
-            height: 3,
-            borderRadius: 2,
-            backgroundColor: "rgba(255,255,255,0.45)",
-          }}
-        >
-          <View
-            style={{
-              width: "46%",
-              height: "100%",
-              borderRadius: 2,
-              backgroundColor: "rgba(255,255,255,0.92)",
-            }}
-          />
-        </View>
-      </VideoThumbnail>
+      />
 
       <View
         style={{
@@ -227,7 +277,7 @@ function ReminderCard({ item, onOpen, onEdit }) {
               flexDirection: "row",
               alignItems: "center",
               gap: 4,
-              backgroundColor: "#F4EEE7",
+              backgroundColor: ACCENT_SOFT,
               borderRadius: 10,
               paddingHorizontal: 7,
               paddingVertical: 4,
@@ -238,7 +288,7 @@ function ReminderCard({ item, onOpen, onEdit }) {
               style={{
                 fontSize: 9.5,
                 fontFamily: "Inter_500Medium",
-                color: "#755A40",
+                color: ACCENT,
               }}
             >
               {item.timingLabel}
@@ -248,7 +298,7 @@ function ReminderCard({ item, onOpen, onEdit }) {
           {showFrequency ? (
             <View
               style={{
-                backgroundColor: "#F5F0EA",
+                backgroundColor: ACCENT_SOFT,
                 borderRadius: 10,
                 paddingHorizontal: 7,
                 paddingVertical: 4,
@@ -258,7 +308,7 @@ function ReminderCard({ item, onOpen, onEdit }) {
                 style={{
                   fontSize: 9,
                   fontFamily: "Inter_500Medium",
-                  color: "#755A40",
+                  color: ACCENT,
                 }}
               >
                 {frequency}
@@ -331,8 +381,12 @@ export default function RemindersScreen() {
   const reloadData = useRecallStore((s) => s.reloadData);
   const updateReminder = useRecallStore((s) => s.updateReminder);
   const deleteReminder = useRecallStore((s) => s.deleteReminder);
+  const reduceMotion = useAppearanceStore((s) => s.reduceMotion);
   const [editingReminder, setEditingReminder] = useState(null);
   const [activeFilter, setActiveFilter] = useState("All");
+  const [collapsedSections, setCollapsedSections] = useState({});
+  const [animatedSections, setAnimatedSections] = useState({});
+  const sectionLayout = reduceMotion ? undefined : SECTION_LAYOUT;
 
   const reminders = getReminderVideos(videos);
 
@@ -358,6 +412,7 @@ export default function RemindersScreen() {
       today: [],
       tomorrow: [],
       thisWeek: [],
+      nextWeek: [],
       later: [],
     };
 
@@ -382,11 +437,13 @@ export default function RemindersScreen() {
 
   const visibleSectionKeys = useMemo(() => {
     if (activeFilter === "Today") return ["today"];
+    if (activeFilter === "Tomorrow") return ["tomorrow"];
     if (activeFilter === "This Week") {
       return ["today", "tomorrow", "thisWeek"];
     }
+    if (activeFilter === "Next Week") return ["nextWeek"];
     if (activeFilter === "Later") return ["later"];
-    return ["today", "tomorrow", "thisWeek", "later"];
+    return ["today", "tomorrow", "thisWeek", "nextWeek", "later"];
   }, [activeFilter]);
 
   if (!fontsLoaded) return null;
@@ -406,6 +463,17 @@ export default function RemindersScreen() {
       pathname: "/video-detail",
       params: { id: video.id },
     });
+  };
+
+  const toggleSection = (sectionKey) => {
+    if (!reduceMotion) {
+      Haptics.selectionAsync().catch(() => null);
+    }
+    setAnimatedSections((prev) => ({ ...prev, [sectionKey]: true }));
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
   };
 
   return (
@@ -467,7 +535,7 @@ export default function RemindersScreen() {
                 key={filter}
                 onPress={() => setActiveFilter(filter)}
                 style={({ pressed }) => ({
-                  minWidth: filter === "This Week" ? 116 : 76,
+                  minWidth: FILTER_MIN_WIDTH[filter] ?? 76,
                   height: 44,
                   borderRadius: 22,
                   paddingHorizontal: 18,
@@ -475,10 +543,10 @@ export default function RemindersScreen() {
                   justifyContent: "center",
                   backgroundColor: active
                     ? pressed
-                      ? "#26221E"
-                      : "#151311"
+                      ? PRESSED
+                      : INVERSE
                     : pressed
-                      ? "#F4EEE7"
+                      ? PRESSED
                       : SURFACE,
                   borderWidth: active ? 0 : 1,
                   borderColor: BORDER,
@@ -488,7 +556,7 @@ export default function RemindersScreen() {
                   style={{
                     fontSize: 14,
                     fontFamily: "Inter_500Medium",
-                    color: active ? WHITE : "#654B34",
+                    color: active ? ON_INVERSE : ACCENT,
                   }}
                 >
                   {filter}
@@ -509,22 +577,47 @@ export default function RemindersScreen() {
         {visibleSectionKeys.map((sectionKey) => {
           const sectionReminders = groupedReminders[sectionKey];
           if (sectionReminders.length === 0) return null;
+          const expanded = !collapsedSections[sectionKey];
+          const shouldAnimate = animatedSections[sectionKey];
 
           return (
-            <View key={sectionKey} style={{ marginBottom: 18 }}>
+            <Reanimated.View
+              key={sectionKey}
+              layout={sectionLayout}
+              style={{ marginBottom: 18 }}
+            >
               <ReminderSectionHeader
                 sectionKey={sectionKey}
                 count={sectionReminders.length}
+                expanded={expanded}
+                reduceMotion={reduceMotion}
+                onToggle={() => toggleSection(sectionKey)}
               />
-              {sectionReminders.map((item) => (
-                <ReminderCard
-                  key={item.id}
-                  item={item}
-                  onOpen={() => openVideo(item)}
-                  onEdit={() => setEditingReminder(item)}
-                />
-              ))}
-            </View>
+              {expanded
+                ? sectionReminders.map((item, index) => (
+                    <Reanimated.View
+                      key={item.id}
+                      entering={
+                        shouldAnimate
+                          ? getCardEntering(index, reduceMotion)
+                          : undefined
+                      }
+                      exiting={
+                        shouldAnimate
+                          ? getCardExiting(reduceMotion)
+                          : undefined
+                      }
+                      layout={sectionLayout}
+                    >
+                      <ReminderCard
+                        item={item}
+                        onOpen={() => openVideo(item)}
+                        onEdit={() => setEditingReminder(item)}
+                      />
+                    </Reanimated.View>
+                  ))
+                : null}
+            </Reanimated.View>
           );
         })}
       </ScrollView>

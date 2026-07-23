@@ -13,6 +13,7 @@ import { Image } from "expo-image";
 import {
   Instagram,
   Youtube,
+  Globe,
   ChevronRight,
   ChevronDown,
   Plus,
@@ -37,6 +38,10 @@ import { useRecallStore } from "../../store/useRecallStore";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { RecallSyncState } from "../../components/RecallSyncState";
 import { VideoThumbnail } from "../../components/VideoThumbnail";
+import {
+  toSearchResultCountBucket,
+  trackEvent,
+} from "../../services/analytics";
 import { NewCollectionModal } from "../../components/AddScreen/NewCollectionModal";
 import { TikTokIcon } from "../../components/AddScreen/TikTokIcon";
 import { daysAgoFromISO, getCategoryMeta, getWorthRevisitingCount, isActiveReminderSchedule } from "../../utils/resurfacing";
@@ -74,7 +79,7 @@ const BLACK = RECALL_COLORS.text;
 const GREY_TEXT = RECALL_COLORS.mutedText;
 const GREY_LIGHT = RECALL_COLORS.subtleStrong;
 const GREY_MID = RECALL_COLORS.mid;
-const WARM_SURFACE = RECALL_COLORS.surface;
+const WARM_SURFACE = RECALL_COLORS.surfaceStrong;
 const WARM_INPUT = RECALL_COLORS.surface;
 const WARM_BORDER = RECALL_COLORS.border;
 const WARM_TEXT = RECALL_COLORS.text;
@@ -113,7 +118,17 @@ function PlatformIcon({ platform, size = 13 }) {
   if (platform === "Instagram")
     return <Instagram size={size} color="#E4405F" />;
   if (platform === "YouTube") return <Youtube size={size} color="#FF0000" />;
-  return <TikTokIcon size={size} color={BLACK} />;
+  if (platform === "Amazon") {
+    return (
+      <Image
+        source={require("../../../assets/images/amazon-logo.png")}
+        style={{ width: size * 1.15, height: size * 1.15 }}
+        contentFit="contain"
+      />
+    );
+  }
+  if (platform === "Web") return <Globe size={size} color="#5B6B7C" />;
+  return <TikTokIcon size={size} color="#1E1915" />;
 }
 function timeAgo(weeks, days) {
   if (days !== undefined) {
@@ -215,7 +230,12 @@ const CHIP_SPRING = {
   stiffness: 420,
   mass: 0.45,
 };
-const CHIP_COLOR_MS = 200;
+const CHIP_INDICATOR_SPRING = {
+  damping: 24,
+  stiffness: 240,
+  mass: 0.7,
+};
+const CHIP_COLOR_MS = 160;
 const CHIP_ENTRANCE_MS = 220;
 const CHIP_ENTRANCE_STAGGER_MS = 40;
 const CHIP_ENTRANCE_OFFSET = 8;
@@ -223,14 +243,21 @@ const CATEGORY_FILTER_MS = 225;
 const CATEGORY_FILTER_SLIDE = 10;
 const CHIP_BORDER_WIDTH = StyleSheet.hairlineWidth;
 // Reanimated interpolateColor needs static hex strings (not DynamicColorIOS).
-const CHIP_INACTIVE_BG = "#FFFCF8";
+const CHIP_INACTIVE_BG = "transparent";
 const CHIP_ACTIVE_BG = "#1E1915";
 const CHIP_INACTIVE_BORDER = "#EBE3D9";
-const CHIP_ACTIVE_BORDER = "#1E1915";
+const CHIP_ACTIVE_BORDER = "transparent";
 const CHIP_INACTIVE_LABEL = "#756E67";
 const CHIP_ACTIVE_LABEL = "#FFFFFF";
 
-function CategoryFilterChip({ cat, index, active, onPress, reduceMotion, skipEntrance }) {
+function CategoryFilterChip({
+  cat,
+  index,
+  active,
+  onPress,
+  reduceMotion,
+  skipEntrance,
+}) {
   const colorProgress = useSharedValue(active ? 1 : 0);
   const pressScale = useSharedValue(1);
   const entranceProgress = useSharedValue(reduceMotion || skipEntrance ? 1 : 0);
@@ -272,17 +299,13 @@ function CategoryFilterChip({ cat, index, active, onPress, reduceMotion, skipEnt
       },
       { scale: pressScale.value },
     ],
-    backgroundColor: interpolateColor(
-      colorProgress.value,
-      [0, 1],
-      [CHIP_INACTIVE_BG, CHIP_ACTIVE_BG],
-    ),
     borderColor: interpolateColor(
       colorProgress.value,
       [0, 1],
       [CHIP_INACTIVE_BORDER, CHIP_ACTIVE_BORDER],
     ),
     borderWidth: CHIP_BORDER_WIDTH,
+    backgroundColor: CHIP_INACTIVE_BG,
   }));
 
   const labelStyle = useAnimatedStyle(() => ({
@@ -307,16 +330,9 @@ function CategoryFilterChip({ cat, index, active, onPress, reduceMotion, skipEnt
     pressScale.value = withSpring(1, CHIP_SPRING);
   };
 
-  const handlePress = () => {
-    if (!active) {
-      Haptics.selectionAsync().catch(() => null);
-    }
-    onPress();
-  };
-
   return (
     <Pressable
-      onPress={handlePress}
+      onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
     >
@@ -338,7 +354,7 @@ function CategoryFilterChip({ cat, index, active, onPress, reduceMotion, skipEnt
           style={[
             {
               fontSize: 13,
-              fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
+              fontFamily: "Inter_500Medium",
             },
             labelStyle,
           ]}
@@ -363,6 +379,45 @@ function CategoryFilterChipRow({
   const contentWidthRef = useRef(0);
   const chipLayoutsRef = useRef({});
   const skipEntrance = entranceDoneRef?.current ?? false;
+  const indicatorX = useSharedValue(0);
+  const indicatorY = useSharedValue(0);
+  const indicatorW = useSharedValue(0);
+  const indicatorH = useSharedValue(0);
+  const indicatorReady = useSharedValue(0);
+
+  const moveIndicatorTo = useCallback(
+    (categoryId, animated = true) => {
+      const layout = chipLayoutsRef.current[categoryId];
+      if (!layout) {
+        return;
+      }
+
+      const shouldAnimate =
+        animated && !reduceMotion && indicatorReady.value === 1;
+
+      if (!shouldAnimate) {
+        indicatorX.value = layout.x;
+        indicatorY.value = layout.y;
+        indicatorW.value = layout.width;
+        indicatorH.value = layout.height;
+        indicatorReady.value = 1;
+        return;
+      }
+
+      indicatorX.value = withSpring(layout.x, CHIP_INDICATOR_SPRING);
+      indicatorY.value = withSpring(layout.y, CHIP_INDICATOR_SPRING);
+      indicatorW.value = withSpring(layout.width, CHIP_INDICATOR_SPRING);
+      indicatorH.value = withSpring(layout.height, CHIP_INDICATOR_SPRING);
+    },
+    [
+      indicatorH,
+      indicatorReady,
+      indicatorW,
+      indicatorX,
+      indicatorY,
+      reduceMotion,
+    ],
+  );
 
   useEffect(() => {
     if (reduceMotion || skipEntrance || !entranceDoneRef) {
@@ -397,11 +452,36 @@ function CategoryFilterChipRow({
   );
 
   useEffect(() => {
+    moveIndicatorTo(activeCategory, true);
     const frame = requestAnimationFrame(() => {
       scrollToActiveChip(activeCategory);
     });
     return () => cancelAnimationFrame(frame);
-  }, [activeCategory, categoryFilters.length, scrollToActiveChip]);
+  }, [activeCategory, categoryFilters.length, moveIndicatorTo, scrollToActiveChip]);
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    opacity: indicatorReady.value,
+    position: "absolute",
+    left: indicatorX.value,
+    top: indicatorY.value,
+    width: indicatorW.value,
+    height: indicatorH.value,
+    borderRadius: 32,
+    backgroundColor: CHIP_ACTIVE_BG,
+    zIndex: 0,
+  }));
+
+  const handleSelectCategory = useCallback(
+    (categoryId) => {
+      if (categoryId !== activeCategory) {
+        Haptics.selectionAsync().catch(() => null);
+        // Start the pill move on press so it doesn't wait for React state.
+        moveIndicatorTo(categoryId, true);
+      }
+      onSelectCategory(categoryId);
+    },
+    [activeCategory, moveIndicatorTo, onSelectCategory],
+  );
 
   return (
     <ScrollView
@@ -416,30 +496,37 @@ function CategoryFilterChipRow({
         contentWidthRef.current = width;
         scrollToActiveChip(activeCategory, false);
       }}
-      contentContainerStyle={{ gap: 8, paddingTop: chipListPaddingTop }}
+      contentContainerStyle={{ paddingTop: chipListPaddingTop }}
       style={{
         flexGrow: 0,
         marginHorizontal: -20,
         paddingHorizontal: 20,
       }}
     >
-      {categoryFilters.map((cat, index) => (
-        <View
-          key={cat.id}
-          onLayout={(event) => {
-            chipLayoutsRef.current[cat.id] = event.nativeEvent.layout;
-          }}
-        >
-          <CategoryFilterChip
-            cat={cat}
-            index={index}
-            active={activeCategory === cat.id}
-            onPress={() => onSelectCategory(cat.id)}
-            reduceMotion={reduceMotion}
-            skipEntrance={skipEntrance}
-          />
-        </View>
-      ))}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Reanimated.View pointerEvents="none" style={indicatorStyle} />
+        {categoryFilters.map((cat, index) => (
+          <View
+            key={cat.id}
+            style={{ zIndex: 1 }}
+            onLayout={(event) => {
+              chipLayoutsRef.current[cat.id] = event.nativeEvent.layout;
+              if (cat.id === activeCategory) {
+                moveIndicatorTo(cat.id, false);
+              }
+            }}
+          >
+            <CategoryFilterChip
+              cat={cat}
+              index={index}
+              active={activeCategory === cat.id}
+              onPress={() => handleSelectCategory(cat.id)}
+              reduceMotion={reduceMotion}
+              skipEntrance={skipEntrance}
+            />
+          </View>
+        ))}
+      </View>
     </ScrollView>
   );
 }
@@ -1247,6 +1334,23 @@ export default function LibraryScreen() {
     return list;
   }, [activeCategory, searchQuery, librarySource, highlightId, sortOption]);
 
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const resultCount = filtered.length;
+    const timeoutId = setTimeout(() => {
+      trackEvent("search_used", {
+        result_count_bucket: toSearchResultCountBucket(resultCount),
+        search_scope: "library",
+      });
+    }, 600);
+
+    return () => clearTimeout(timeoutId);
+  }, [filtered.length, searchQuery]);
+
   const handleSelectSort = (nextSort) => {
     setSessionLibrarySort(nextSort);
     setSortOption(nextSort);
@@ -1327,6 +1431,7 @@ export default function LibraryScreen() {
       return;
     }
 
+    trackEvent("collection_created", { source: "collections_screen" });
     setShowNewCollectionModal(false);
     setActiveView("collections");
   };
@@ -2062,13 +2167,16 @@ export default function LibraryScreen() {
               style={{
                 marginTop: 8,
                 backgroundColor: WARM_SURFACE,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: WARM_BORDER,
+                borderRadius: 20,
                 padding: 16,
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 12,
+                shadowColor: "#8D7A68",
+                shadowOffset: { width: 0, height: 5 },
+                shadowOpacity: 0.07,
+                shadowRadius: 18,
+                elevation: 2,
               }}
             >
               <Text style={{ fontSize: 20 }}>💡</Text>

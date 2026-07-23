@@ -30,11 +30,13 @@ import { useSupabaseSessionStore } from "../../store/useSupabaseSessionStore";
 import {
   getFriendlySupabaseError,
   getRecallProfile,
+  isUsableRecallDisplayName,
   signOutOfRecall,
   updateRecallProfile,
 } from "../../services/supabaseClient";
 import { PAYWALL_TRIGGERS } from "../../utils/freemium";
 import { resetRecallOnboardingState } from "../../services/onboardingService";
+import { resetAnalyticsUser } from "../../services/analytics";
 import { RECALL_COLORS } from "../../constants/recallTheme";
 import { RecallSavedContentIcon } from "../../components/RecallSavedContentIcon";
 import { RecallActionIcon } from "../../components/RecallActionIcon";
@@ -42,7 +44,7 @@ import { RecallProfileIcon } from "../../components/RecallProfileIcon";
 import { RecallReminderIcon } from "../../components/RecallReminderIcon";
 
 const BG = RECALL_COLORS.background;
-const WHITE = RECALL_COLORS.surface;
+const WHITE = RECALL_COLORS.surfaceStrong;
 const BLACK = RECALL_COLORS.text;
 const GREY_TEXT = RECALL_COLORS.secondaryText;
 const GREY_LIGHT = RECALL_COLORS.subtle;
@@ -61,28 +63,19 @@ function TikTokMark({ size = 13, color = "#000" }) {
   );
 }
 
-function getEmailHandle(email) {
-  return email?.split("@")?.[0]?.trim() || "";
-}
-
-function isApplePrivateRelayEmail(email) {
-  return typeof email === "string" && email.trim().toLowerCase().endsWith("@privaterelay.appleid.com");
-}
-
-function isUsableDisplayName(value) {
-  return typeof value === "string" && value.trim().length > 0 && !value.includes("@");
-}
-
 function getDisplayName({ profile, user }) {
-  const emailHandle = getEmailHandle(user?.email);
+  const email = user?.email ?? null;
   return (
-    (isUsableDisplayName(profile?.display_name) ? profile.display_name.trim() : "") ||
-    (isUsableDisplayName(user?.user_metadata?.display_name)
+    (isUsableRecallDisplayName(profile?.display_name, email)
+      ? profile.display_name.trim()
+      : "") ||
+    (isUsableRecallDisplayName(user?.user_metadata?.display_name, email)
       ? user.user_metadata.display_name.trim()
       : "") ||
-    (isUsableDisplayName(user?.user_metadata?.name) ? user.user_metadata.name.trim() : "") ||
-    (isApplePrivateRelayEmail(user?.email) ? "" : emailHandle) ||
-    "Recall User"
+    (isUsableRecallDisplayName(user?.user_metadata?.name, email)
+      ? user.user_metadata.name.trim()
+      : "") ||
+    "there"
   );
 }
 
@@ -966,6 +959,7 @@ export default function ProfileScreen() {
         onPress: async () => {
           try {
             await signOutOfRecall();
+            resetAnalyticsUser();
           } catch (_error) {
             Alert.alert(
               "Sign out didn't finish",
@@ -1012,6 +1006,7 @@ export default function ProfileScreen() {
             try {
               await resetRecallOnboardingState(supabaseUser?.id);
               await signOutOfRecall();
+              resetAnalyticsUser();
               router.replace("/");
             } catch (_error) {
               Alert.alert(

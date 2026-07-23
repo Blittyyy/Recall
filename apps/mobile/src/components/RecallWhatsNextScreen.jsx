@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { Instagram, Lightbulb, Link2 } from "lucide-react-native";
+import { Instagram, Lightbulb } from "lucide-react-native";
 import Animated, {
   Easing,
   interpolate,
@@ -58,42 +58,32 @@ const HOW_IT_WORKS = [
     body: "From the share sheet.",
   },
   {
-    title: "We’ll open with everything",
-    body: "ready to save.",
+    title: "Save it",
+    body: "We’ll open with everything ready.",
   },
 ];
 
-function Sparkle({ size = 10, style }) {
+function Sparkle({ size = 10, style, color = ACCENT }) {
+  const mid = size / 2;
+  const arm = size * 0.12;
+  // Four-pointed sparkle (✦), not a plus.
+  const path = [
+    `M ${mid} 0`,
+    `L ${mid + arm} ${mid - arm}`,
+    `L ${size} ${mid}`,
+    `L ${mid + arm} ${mid + arm}`,
+    `L ${mid} ${size}`,
+    `L ${mid - arm} ${mid + arm}`,
+    `L 0 ${mid}`,
+    `L ${mid - arm} ${mid - arm}`,
+    "Z",
+  ].join(" ");
+
   return (
-    <View
-      style={[
-        {
-          width: size,
-          height: size,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-        style,
-      ]}
-    >
-      <View
-        style={{
-          position: "absolute",
-          width: size * 0.22,
-          height: size,
-          borderRadius: 99,
-          backgroundColor: ACCENT,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height: size * 0.22,
-          borderRadius: 99,
-          backgroundColor: ACCENT,
-        }}
-      />
+    <View style={[{ width: size, height: size }, style]}>
+      <Svg width={size} height={size}>
+        <Path d={path} fill={color} />
+      </Svg>
     </View>
   );
 }
@@ -248,19 +238,6 @@ function PlatformToShareConnectors({ width, height, progress }) {
   return (
     <Animated.View style={[{ width, height }, animatedStyle]}>
       <Svg width={width} height={height}>
-        <Defs>
-          <Marker
-            id="whatsNextArrowShare"
-            markerWidth="6"
-            markerHeight="6"
-            refX="3"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <Polygon points="0,0 6,3 0,6" fill={ACCENT} />
-          </Marker>
-        </Defs>
         <Path
           d={`M${leftX} ${startY} C ${leftX} ${height * 0.55}, ${midX - 18} ${endY - 10}, ${midX} ${endY}`}
           stroke={ACCENT}
@@ -268,7 +245,6 @@ function PlatformToShareConnectors({ width, height, progress }) {
           strokeDasharray="3.5 4.5"
           strokeLinecap="round"
           fill="none"
-          markerEnd="url(#whatsNextArrowShare)"
         />
         <Path
           d={`M${midX} ${startY} L ${midX} ${endY}`}
@@ -277,7 +253,6 @@ function PlatformToShareConnectors({ width, height, progress }) {
           strokeDasharray="3.5 4.5"
           strokeLinecap="round"
           fill="none"
-          markerEnd="url(#whatsNextArrowShare)"
         />
         <Path
           d={`M${rightX} ${startY} C ${rightX} ${height * 0.55}, ${midX + 18} ${endY - 10}, ${midX} ${endY}`}
@@ -286,7 +261,6 @@ function PlatformToShareConnectors({ width, height, progress }) {
           strokeDasharray="3.5 4.5"
           strokeLinecap="round"
           fill="none"
-          markerEnd="url(#whatsNextArrowShare)"
         />
       </Svg>
     </Animated.View>
@@ -294,41 +268,76 @@ function PlatformToShareConnectors({ width, height, progress }) {
 }
 
 function RecallMark({ size }) {
-  const rays = [
-    { top: size * 0.08, left: -size * 0.18, rotate: "-28deg", length: size * 0.22 },
-    { top: size * 0.42, left: -size * 0.24, rotate: "0deg", length: size * 0.2 },
-    { top: size * 0.74, left: -size * 0.16, rotate: "28deg", length: size * 0.2 },
-    { top: size * 0.08, right: -size * 0.18, rotate: "28deg", length: size * 0.22 },
-    { top: size * 0.42, right: -size * 0.24, rotate: "0deg", length: size * 0.2 },
-    { top: size * 0.74, right: -size * 0.16, rotate: "-28deg", length: size * 0.2 },
+  const pad = Math.round(size * 0.46);
+  const box = size + pad * 2;
+  const cx = box / 2;
+  const cy = box / 2;
+  const innerR = size / 2 + Math.max(12, size * 0.22);
+
+  // Leave top/bottom clearer for the connectors; emphasize the sides.
+  const ticks = [
+    { deg: -48, len: size * 0.15 },
+    { deg: -24, len: size * 0.11 },
+    { deg: 24, len: size * 0.11 },
+    { deg: 48, len: size * 0.15 },
+    { deg: 132, len: size * 0.15 },
+    { deg: 156, len: size * 0.11 },
+    { deg: 204, len: size * 0.11 },
+    { deg: 228, len: size * 0.15 },
   ];
 
   return (
     <View style={{ alignItems: "center" }}>
       <View
         style={{
-          width: size + 28,
-          height: size + 6,
+          width: box,
+          height: box,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        {rays.map((ray, index) => (
-          <View
-            key={`ray-${index}`}
-            style={{
-              position: "absolute",
-              top: ray.top,
-              left: ray.left,
-              right: ray.right,
-              width: ray.length,
-              height: 1.4,
-              borderRadius: 99,
-              backgroundColor: index % 2 === 0 ? ACCENT : ACCENT_SOFT,
-              transform: [{ rotate: ray.rotate }],
-            }}
-          />
-        ))}
+        <Svg
+          width={box}
+          height={box}
+          style={{ position: "absolute", top: 0, left: 0 }}
+        >
+          {ticks.map((tick, index) => {
+            const rad = (tick.deg * Math.PI) / 180;
+            const x1 = cx + Math.cos(rad) * innerR;
+            const y1 = cy + Math.sin(rad) * innerR;
+            const x2 = cx + Math.cos(rad) * (innerR + tick.len);
+            const y2 = cy + Math.sin(rad) * (innerR + tick.len);
+
+            return (
+              <Path
+                key={`tick-${index}`}
+                d={`M${x1} ${y1} L${x2} ${y2}`}
+                stroke={index % 2 === 0 ? ACCENT : ACCENT_SOFT}
+                strokeWidth={1.4}
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </Svg>
+
+        <Sparkle
+          size={Math.max(9, Math.round(size * 0.17))}
+          style={{
+            position: "absolute",
+            top: pad * 0.12,
+            left: pad * 0.08,
+          }}
+        />
+        <Sparkle
+          size={Math.max(7, Math.round(size * 0.13))}
+          color={ACCENT_SOFT}
+          style={{
+            position: "absolute",
+            bottom: pad * 0.16,
+            right: pad * 0.06,
+          }}
+        />
+
         <Image
           source={RECALL_APP_ICON}
           style={{
@@ -341,7 +350,7 @@ function RecallMark({ size }) {
       </View>
       <Text
         style={{
-          marginTop: 4,
+          marginTop: 2,
           fontSize: 13,
           lineHeight: 16,
           color: BLACK,
@@ -592,8 +601,8 @@ export function RecallWhatsNextScreen({ onContinue }) {
 
         <View
           style={{
-            marginTop: 32,
-            marginBottom: 18,
+            marginTop: 22,
+            marginBottom: 12,
             height: 1,
             backgroundColor: DIVIDER,
           }}
@@ -602,12 +611,12 @@ export function RecallWhatsNextScreen({ onContinue }) {
         <Text
           style={{
             fontSize: 12,
-            lineHeight: 16,
+            lineHeight: 15,
             letterSpacing: 1.3,
             textTransform: "uppercase",
             color: ACCENT,
             fontFamily: "Inter_600SemiBold",
-            marginBottom: 16,
+            marginBottom: 6,
           }}
         >
           How it works
@@ -618,16 +627,16 @@ export function RecallWhatsNextScreen({ onContinue }) {
             <View
               style={{
                 flexDirection: "row",
-                alignItems: "flex-start",
-                gap: 14,
-                paddingVertical: 14,
+                alignItems: "center",
+                gap: 12,
+                paddingVertical: 9,
               }}
             >
               <View
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
+                  width: 26,
+                  height: 26,
+                  borderRadius: 13,
                   backgroundColor: STEP_BADGE,
                   alignItems: "center",
                   justifyContent: "center",
@@ -635,7 +644,7 @@ export function RecallWhatsNextScreen({ onContinue }) {
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: 12,
                     fontFamily: "Inter_600SemiBold",
                     color: ACCENT,
                   }}
@@ -643,11 +652,11 @@ export function RecallWhatsNextScreen({ onContinue }) {
                   {index + 1}
                 </Text>
               </View>
-              <View style={{ flex: 1, paddingTop: 2 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
                   style={{
-                    fontSize: 16,
-                    lineHeight: 22,
+                    fontSize: 15,
+                    lineHeight: 19,
                     color: BLACK,
                     fontFamily: "Inter_600SemiBold",
                     letterSpacing: -0.2,
@@ -655,98 +664,74 @@ export function RecallWhatsNextScreen({ onContinue }) {
                 >
                   {step.title}
                 </Text>
-                {step.body ? (
-                  <Text
-                    style={{
-                      marginTop: 2,
-                      fontSize: 14,
-                      lineHeight: 20,
-                      color: BODY,
-                      fontFamily: "Inter_400Regular",
-                    }}
-                  >
-                    {step.body}
-                  </Text>
-                ) : null}
+                <Text
+                  style={{
+                    marginTop: 1,
+                    fontSize: 13,
+                    lineHeight: 17,
+                    color: BODY,
+                    fontFamily: "Inter_400Regular",
+                  }}
+                >
+                  {step.body}
+                </Text>
               </View>
             </View>
             {index < HOW_IT_WORKS.length - 1 ? (
-              <View style={{ height: 1, backgroundColor: DIVIDER, marginLeft: 42 }} />
+              <View style={{ height: 1, backgroundColor: DIVIDER, marginLeft: 38 }} />
             ) : null}
           </View>
         ))}
 
         <View
           style={{
-            marginTop: 18,
-            borderRadius: 18,
+            marginTop: 14,
+            marginBottom: 4,
+            borderRadius: 16,
             backgroundColor: TIP_BG,
-            paddingHorizontal: 16,
-            paddingVertical: 16,
+            paddingHorizontal: 14,
+            paddingVertical: 13,
             flexDirection: "row",
-            gap: 12,
+            gap: 11,
           }}
         >
           <View
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
+              width: 32,
+              height: 32,
+              borderRadius: 16,
               backgroundColor: WHITE,
               alignItems: "center",
               justifyContent: "center",
+              marginTop: 1,
             }}
           >
-            <Lightbulb size={18} color={ACCENT} />
+            <Lightbulb size={16} color={ACCENT} />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text
               style={{
-                fontSize: 15,
-                lineHeight: 20,
+                fontSize: 14,
+                lineHeight: 18,
                 color: BLACK,
                 fontFamily: "Inter_600SemiBold",
-                marginBottom: 4,
+                marginBottom: 3,
               }}
             >
               Don’t see Recall?
             </Text>
             <Text
               style={{
-                fontSize: 14,
-                lineHeight: 20,
+                fontSize: 13,
+                lineHeight: 18,
                 color: BODY,
                 fontFamily: "Inter_400Regular",
               }}
             >
-              Tap More or Share to once, then choose Recall. It’ll appear faster
-              next time.
+              Tap More or Share to once, then choose Recall. You can also paste
+              any link using the + button.
             </Text>
           </View>
-        </View>
-
-        <View
-          style={{
-            marginTop: 18,
-            marginBottom: 8,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-          }}
-        >
-          <Link2 size={15} color={MUTED} />
-          <Text
-            style={{
-              fontSize: 13,
-              lineHeight: 18,
-              color: MUTED,
-              fontFamily: "Inter_400Regular",
-              textAlign: "center",
-            }}
-          >
-            Or paste a link anytime using the + button.
-          </Text>
         </View>
       </ScrollView>
 
@@ -754,7 +739,7 @@ export function RecallWhatsNextScreen({ onContinue }) {
         style={{
           paddingHorizontal: 24,
           paddingTop: 10,
-          paddingBottom: Math.max(insets.bottom, 16),
+          paddingBottom: Math.max(insets.bottom + 8, 18),
           backgroundColor: BG,
         }}
       >

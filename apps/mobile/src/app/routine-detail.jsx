@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Instagram,
   Youtube,
+  Globe,
   Clock,
   CalendarDays,
   MoreHorizontal,
@@ -31,6 +32,7 @@ import {
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { TikTokIcon } from "../components/AddScreen/TikTokIcon";
+import { getOpenActionLabel } from "../utils/openActionLabel";
 
 // ─── Design tokens (matches app-wide system) ─────────────────────────────────
 const BG = "#F8F8F8";
@@ -75,6 +77,7 @@ function PlatformIcon({ platform, size = 14 }) {
   if (platform === "Instagram")
     return <Instagram size={size} color="#E4405F" />;
   if (platform === "YouTube") return <Youtube size={size} color="#FF0000" />;
+  if (platform === "Web") return <Globe size={size} color="#5B6B7C" />;
   return <TikTokIcon size={size} color={BLACK} />;
 }
 
@@ -154,7 +157,7 @@ function OptionsMenu({ visible, onClose }) {
   const OPTIONS = [
     { icon: <RecallActionIcon name="edit" size={18} />, label: "Edit Routine" },
     { icon: <RecallReminderIcon name="bell" size={16} />, label: "Change Reminder" },
-    { icon: <RecallActionIcon name="share" size={16} />, label: "Share Video" },
+    { icon: <RecallActionIcon name="share" size={16} />, label: "Share Link" },
     {
       icon: <Trash2 size={16} color="#FF3B30" />,
       label: "Delete Routine",
@@ -309,6 +312,7 @@ export default function RoutineDetailScreen() {
   if (!fontsLoaded) return null;
 
   const routine = ROUTINE;
+  const openActionLabel = getOpenActionLabel(routine);
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
@@ -637,7 +641,7 @@ export default function RoutineDetailScreen() {
                     letterSpacing: -0.3,
                   }}
                 >
-                  Open Video
+                  {openActionLabel}
                 </Text>
               </Pressable>
 

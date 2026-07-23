@@ -1,10 +1,13 @@
 import {
   getGeneratedTitle,
+  getReadableHostname,
   getSafeThumbnailUrl,
+  isPublicHttpUrl,
   normalizeUrl,
   normalizeVideoUrlForSave,
 } from "../utils/urlHelpers";
 import { getDisplayTitle } from "../utils/titleHelpers";
+import { supabase } from "./supabaseClient";
 
 const OEMBED_ENDPOINTS: Record<string, (url: string) => string | null> = {
   youtube: (url) =>
@@ -521,6 +524,100 @@ async function fetchInstagramMetadata({
   };
 }
 
+async function fetchWebMetadata({
+  inputUrl,
+  signal,
+}: {
+  inputUrl: string;
+  signal?: AbortSignal;
+}) {
+  const normalizedUrl = normalizeUrl(inputUrl) ?? inputUrl.trim();
+  if (!isPublicHttpUrl(normalizedUrl)) {
+    throw new Error("Webpage URL is not allowed.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("fetch-web-metadata", {
+    body: { url: normalizedUrl },
+    signal,
+  });
+
+  if (signal?.aborted) {
+    const abortError = new Error("Aborted");
+    abortError.name = "AbortError";
+    throw abortError;
+  }
+
+  if (error) {
+    if (
+      (error as { name?: string })?.name === "AbortError" ||
+      `${error?.message ?? ""}`.toLowerCase().includes("abort")
+    ) {
+      const abortError = new Error("Aborted");
+      abortError.name = "AbortError";
+      throw abortError;
+    }
+    throw new Error("Webpage metadata request failed.");
+  }
+
+  const payload = data && typeof data === "object" ? data : null;
+  if (!payload || typeof (payload as { error?: string }).error === "string") {
+    throw new Error("Webpage metadata request failed.");
+  }
+
+  const record = payload as {
+    title?: unknown;
+    siteName?: unknown;
+    description?: unknown;
+    thumbnailUrl?: unknown;
+    finalUrl?: unknown;
+    hostname?: unknown;
+  };
+
+  const finalUrlRaw =
+    typeof record.finalUrl === "string" ? record.finalUrl.trim() : "";
+  const safeFinalUrl =
+    (finalUrlRaw && isPublicHttpUrl(finalUrlRaw) ? finalUrlRaw : null) ||
+    normalizedUrl;
+  const videoUrl = normalizeVideoUrlForSave(safeFinalUrl) ?? safeFinalUrl;
+
+  const hostname =
+    (typeof record.hostname === "string" && record.hostname.trim()) ||
+    getReadableHostname(videoUrl) ||
+    getReadableHostname(normalizedUrl) ||
+    "Webpage";
+
+  const remoteTitle =
+    typeof record.title === "string" ? record.title.trim() : "";
+  const title = getDisplayTitle(
+    remoteTitle || hostname,
+    getGeneratedTitle("web", normalizedUrl),
+  );
+
+  const siteName =
+    (typeof record.siteName === "string" && record.siteName.trim()) ||
+    hostname;
+
+  const thumbnailRaw =
+    typeof record.thumbnailUrl === "string" ? record.thumbnailUrl.trim() : "";
+  const thumbnailUrl =
+    thumbnailRaw && isPublicHttpUrl(thumbnailRaw) ? thumbnailRaw : null;
+
+  const description =
+    typeof record.description === "string" ? record.description.trim() : null;
+
+  return {
+    title,
+    creator: siteName,
+    thumbnailUrl,
+    videoUrl,
+    description: description || null,
+    siteName,
+    hostname,
+    originalUrl: normalizedUrl,
+    finalUrl: safeFinalUrl,
+  };
+}
+
 export async function fetchVideoMetadata({
   inputUrl,
   platform,
@@ -541,6 +638,13 @@ export async function fetchVideoMetadata({
 
   if (platform === "tiktok") {
     return fetchTikTokMetadata({
+      inputUrl: normalizedUrl,
+      signal,
+    });
+  }
+
+  if (platform === "web" || platform === "amazon") {
+    return fetchWebMetadata({
       inputUrl: normalizedUrl,
       signal,
     });

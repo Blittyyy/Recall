@@ -2,14 +2,19 @@ import { useAuth } from "../utils/auth/useAuth";
 import { useRecallStore } from "../store/useRecallStore";
 import { useSupabaseSessionStore } from "../store/useSupabaseSessionStore";
 import {
+  createSessionFromAuthUrl,
   ensureRecallProfile,
   getCurrentSupabaseSession,
   getRecallProfile,
-  isApplePrivateRelayEmail,
   isUsableRecallDisplayName,
   listenToSupabaseAuth,
   updateRecallProfile,
 } from "../services/supabaseClient";
+import {
+  hydratePasswordRecoveryPending,
+  setPasswordRecoveryPending,
+  subscribePasswordRecoveryPending,
+} from "../services/passwordRecoveryService";
 import { RecallAuthScreen } from "../components/RecallAuthScreen";
 import { RecallOnboardingScreen } from "../components/RecallOnboardingScreen";
 import { RecallWhatsNextScreen } from "../components/RecallWhatsNextScreen";
@@ -28,9 +33,11 @@ import {
 import {
   cancelAllReminderNotifications,
   cancelFollowUpReminderNotificationsForVideo,
+  getNotificationPermissionStatus,
   getNotificationVideoIdFromResponse,
   initializeRecallNotifications,
   isOnceReminderNotificationResponse,
+  resyncReminderNotifications,
 } from "../services/recallNotifications";
 import { getSupabaseStartupError } from "../services/supabaseClient";
 import {
@@ -48,6 +55,7 @@ import { Stack, useGlobalSearchParams, useRouter, useSegments } from "expo-route
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Platform,
   Pressable,
   Text,
@@ -60,6 +68,13 @@ import * as Linking from "expo-linking";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAppearanceStore } from "../store/useAppearanceStore";
+import {
+  AnalyticsProvider,
+  identifyAnalyticsUser,
+  resetAnalyticsUser,
+  toAnalyticsPlatform,
+  trackEvent,
+} from "../services/analytics";
 SplashScreen.preventAutoHideAsync();
 
 function logStartup(stage, details) {
@@ -79,7 +94,9 @@ const queryClient = new QueryClient({
   },
 });
 
-function DisplayNamePrompt({ value, onChangeText, onSubmit, isSaving }) {
+function DisplayNamePrompt({ value, onChangeText, onSubmit, isSaving, email }) {
+  const canSubmit = isUsableRecallDisplayName(value, email);
+
   return (
     <View
       style={{
@@ -124,7 +141,7 @@ function DisplayNamePrompt({ value, onChangeText, onSubmit, isSaving }) {
             marginBottom: 18,
           }}
         >
-          This keeps your profile and home screen feeling personal, even when Apple hides your email.
+          This is how your name appears on Home and your profile — not your email.
         </Text>
         <TextInput
           value={value}
@@ -148,10 +165,10 @@ function DisplayNamePrompt({ value, onChangeText, onSubmit, isSaving }) {
         />
         <Pressable
           onPress={onSubmit}
-          disabled={isSaving || !value.trim()}
+          disabled={isSaving || !canSubmit}
           style={({ pressed }) => ({
             backgroundColor:
-              isSaving || !value.trim()
+              isSaving || !canSubmit
                 ? "#B7B7B7"
                 : pressed
                   ? "#222222"
@@ -178,6 +195,14 @@ function DisplayNamePrompt({ value, onChangeText, onSubmit, isSaving }) {
 }
 
 export default function RootLayout() {
+  return (
+    <AnalyticsProvider>
+      <RootLayoutContent />
+    </AnalyticsProvider>
+  );
+}
+
+function RootLayoutContent() {
   const startupConfigError = getSupabaseStartupError();
   const [authMode, setAuthMode] = useState("welcome");
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -190,6 +215,8 @@ export default function RootLayout() {
   const setSupabaseSession = useSupabaseSessionStore((s) => s.setSession);
   const [isAuthGateReady, setIsAuthGateReady] = useState(false);
   const [showWhatsNext, setShowWhatsNext] = useState(false);
+  const [passwordRecoveryPending, setPasswordRecoveryPendingState] =
+    useState(false);
   const [displayNamePromptVisible, setDisplayNamePromptVisible] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
@@ -209,22 +236,104 @@ export default function RootLayout() {
   const PENDING_SHARE_MAX_RESUME_ATTEMPTS = 8;
 
   useEffect(() => {
+    let active = true;
+    hydratePasswordRecoveryPending()
+      .then((pending) => {
+        if (active) setPasswordRecoveryPendingState(pending);
+      })
+      .catch(() => null);
+    const unsubscribe = subscribePasswordRecoveryPending((pending) => {
+      if (active) setPasswordRecoveryPendingState(pending);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (startupConfigError || !supabaseReady) {
       return undefined;
     }
 
+    const isAuthCallbackUrl = (link) => {
+      if (!link || typeof link !== "string") return false;
+      const normalized = link.replace(/#/g, "?");
+      const parsed = Linking.parse(normalized);
+      const params = parsed.queryParams ?? {};
+      const hasAuthParam = Boolean(
+        params.access_token ||
+          params.refresh_token ||
+          params.code ||
+          params.type === "recovery" ||
+          params.type === "signup" ||
+          params.type === "magiclink",
+      );
+      const path = `${parsed.path ?? ""} ${parsed.hostname ?? ""}`.toLowerCase();
+      return (
+        hasAuthParam ||
+        path.includes("reset-password") ||
+        path.includes("auth/callback")
+      );
+    };
+
+    const handleIncomingAuthLink = async (link) => {
+      if (!isAuthCallbackUrl(link)) {
+        return false;
+      }
+
+      try {
+        const result = await createSessionFromAuthUrl(link);
+        if (!result?.session) {
+          return true;
+        }
+
+        setSupabaseSession(result.session);
+        if (result.isRecovery) {
+          await setPasswordRecoveryPending(true);
+        }
+        return true;
+      } catch (_error) {
+        return true;
+      }
+    };
+
     const handleIncomingShareLink = async (link) => {
+      const handledAuth = await handleIncomingAuthLink(link);
+      if (handledAuth) {
+        return;
+      }
+
       const sharedUrl = extractShareUrlFromLink(link);
       if (!sharedUrl) {
         return;
       }
 
+      // Always persist so handoff survives splash, auth gate, and What's Next.
+      await setPendingShareUrl(sharedUrl);
+
       if (!supabaseUser?.id) {
-        await setPendingShareUrl(sharedUrl);
+        // Logged-out: store only; resume runs after authentication.
         return;
       }
 
-      await clearPendingShareUrl();
+      const resumeState = pendingShareResumeRef.current;
+      const alreadyNavigatingSameUrl =
+        shareUrlsMatch(resumeState?.url, sharedUrl) &&
+        resumeState?.status === "navigating" &&
+        Date.now() - (resumeState.attemptedAt ?? 0) <
+          PENDING_SHARE_RESUME_DEBOUNCE_MS;
+
+      if (alreadyNavigatingSameUrl) {
+        return;
+      }
+
+      // New URL (or stale resume state) — allow a fresh resume attempt.
+      if (!shareUrlsMatch(resumeState?.url, sharedUrl)) {
+        pendingShareResumeRef.current = null;
+      }
+
+      setPendingShareRetryToken((token) => token + 1);
     };
 
     Linking.getInitialURL()
@@ -238,13 +347,30 @@ export default function RootLayout() {
     return () => {
       subscription.remove();
     };
-  }, [startupConfigError, supabaseReady, supabaseUser?.id]);
+  }, [
+    setSupabaseSession,
+    startupConfigError,
+    supabaseReady,
+    supabaseUser?.id,
+  ]);
 
   useEffect(() => {
     if (startupConfigError || !supabaseReady || !supabaseUser?.id) {
       if (!supabaseUser?.id) {
         pendingShareResumeRef.current = null;
       }
+      return undefined;
+    }
+
+    // Wait until the main Stack is mounted (not splash / What's Next / auth gate / password recovery).
+    // Do not consume retry attempts while What's Next is visible.
+    if (
+      !isReady ||
+      !appearanceReady ||
+      !isAuthGateReady ||
+      showWhatsNext ||
+      passwordRecoveryPending
+    ) {
       return undefined;
     }
 
@@ -341,14 +467,29 @@ export default function RootLayout() {
       clearTimeout(retryTimer);
     };
   }, [
+    appearanceReady,
     globalSearchParams.url,
+    isAuthGateReady,
+    isReady,
     pendingShareRetryToken,
     router,
     segments,
+    showWhatsNext,
+    passwordRecoveryPending,
     startupConfigError,
     supabaseReady,
     supabaseUser?.id,
   ]);
+
+  // Discard any in-flight resume bookkeeping while What's Next owns the UI.
+  // Pending URL storage is intentionally left intact.
+  useEffect(() => {
+    if (!showWhatsNext) {
+      return;
+    }
+
+    pendingShareResumeRef.current = null;
+  }, [showWhatsNext]);
 
   useEffect(() => {
     initializeAppearance();
@@ -370,6 +511,53 @@ export default function RootLayout() {
       console.error("[Recall startup] notifications init failed", error);
     }
   }, []);
+
+  // After returning from iOS Settings with notifications newly granted,
+  // resync reminders so previously saved ones can schedule without re-editing.
+  useEffect(() => {
+    if (startupConfigError || Platform.OS === "web" || !supabaseUser?.id) {
+      return undefined;
+    }
+
+    let active = true;
+    const lastPermissionRef = { current: null };
+
+    const syncIfPermissionNewlyGranted = async () => {
+      try {
+        const status = await getNotificationPermissionStatus();
+        if (!active) return;
+
+        const previous = lastPermissionRef.current;
+        lastPermissionRef.current = status;
+
+        // First observation only seeds state (avoid startup double-sync).
+        if (previous == null) {
+          return;
+        }
+
+        if (status === "granted" && previous !== "granted") {
+          const videos = useRecallStore.getState().videos;
+          await resyncReminderNotifications(videos, {
+            requestPermission: false,
+          });
+        }
+      } catch (_error) {
+        // Permission / resync failures should not interrupt the app.
+      }
+    };
+
+    syncIfPermissionNewlyGranted();
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        syncIfPermissionNewlyGranted();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [startupConfigError, supabaseUser?.id]);
 
   useEffect(() => {
     if (startupConfigError) {
@@ -395,11 +583,15 @@ export default function RootLayout() {
 
     const {
       data: { subscription },
-    } = listenToSupabaseAuth(async (session) => {
+    } = listenToSupabaseAuth(async (session, event) => {
       setSupabaseSession(session);
+      if (event === "PASSWORD_RECOVERY") {
+        await setPasswordRecoveryPending(true);
+      }
       if (session?.user) {
         await ensureRecallProfile({ user: session.user });
       } else {
+        await setPasswordRecoveryPending(false);
         await cancelAllReminderNotifications();
       }
     });
@@ -409,6 +601,17 @@ export default function RootLayout() {
       subscription.unsubscribe();
     };
   }, [setSupabaseSession, startupConfigError]);
+
+  useEffect(() => {
+    if (!supabaseReady) {
+      return;
+    }
+    if (supabaseUser?.id) {
+      identifyAnalyticsUser(supabaseUser.id);
+      return;
+    }
+    resetAnalyticsUser();
+  }, [supabaseReady, supabaseUser?.id]);
 
   useEffect(() => {
     if (startupConfigError) {
@@ -435,6 +638,15 @@ export default function RootLayout() {
       maybeCompleteOnceReminder(response);
       const videoId = getNotificationVideoIdFromResponse(response);
       if (!videoId) return;
+
+      const savedVideo = useRecallStore
+        .getState()
+        .videos.find((video) => video.id === videoId);
+      trackEvent("notification_opened", {
+        destination: "video_detail",
+        save_platform: toAnalyticsPlatform(savedVideo?.platform),
+      });
+
       await cancelFollowUpReminderNotificationsForVideo(videoId).catch(
         () => null,
       );
@@ -488,18 +700,24 @@ export default function RootLayout() {
         const profile = await getRecallProfile(supabaseUser.id);
         if (!active) return;
 
+        const email = supabaseUser?.email ?? null;
         const profileName = profile?.display_name ?? null;
         const metadataName =
           supabaseUser?.user_metadata?.display_name ??
           supabaseUser?.user_metadata?.name ??
           null;
         const needsPrompt =
-          isApplePrivateRelayEmail(supabaseUser?.email) &&
-          !isUsableRecallDisplayName(profileName) &&
-          !isUsableRecallDisplayName(metadataName);
+          !isUsableRecallDisplayName(profileName, email) &&
+          !isUsableRecallDisplayName(metadataName, email);
 
         setDisplayNamePromptVisible(needsPrompt);
-        setDisplayNameDraft(isUsableRecallDisplayName(profileName) ? profileName.trim() : "");
+        setDisplayNameDraft(
+          isUsableRecallDisplayName(profileName, email)
+            ? profileName.trim()
+            : isUsableRecallDisplayName(metadataName, email)
+              ? metadataName.trim()
+              : "",
+        );
       } catch (_error) {
         if (!active) return;
         setDisplayNamePromptVisible(false);
@@ -645,13 +863,51 @@ export default function RootLayout() {
     );
   }
 
+  if (passwordRecoveryPending) {
+    return (
+      <AppViewportFrame>
+        <RecallAuthScreen
+          mode="resetPassword"
+          onPasswordUpdated={async () => {
+            await setPasswordRecoveryPending(false);
+          }}
+        />
+      </AppViewportFrame>
+    );
+  }
+
   if (showWhatsNext) {
     return (
       <AppViewportFrame>
         <RecallWhatsNextScreen
           onContinue={async () => {
             await setRecallWhatsNextComplete(supabaseUser.id).catch(() => null);
+            // Fresh resume budget once the main Stack can mount.
+            pendingShareResumeRef.current = null;
+
+            const email = supabaseUser?.email ?? null;
+            let draft = "";
+            try {
+              const profile = await getRecallProfile(supabaseUser.id);
+              const profileName = profile?.display_name ?? null;
+              const metadataName =
+                supabaseUser?.user_metadata?.display_name ??
+                supabaseUser?.user_metadata?.name ??
+                null;
+              if (isUsableRecallDisplayName(profileName, email)) {
+                draft = profileName.trim();
+              } else if (isUsableRecallDisplayName(metadataName, email)) {
+                draft = metadataName.trim();
+              }
+            } catch (_error) {
+              draft = "";
+            }
+
+            // Always collect a real first name after What's Next — never use email handles.
+            setDisplayNameDraft(draft);
+            setDisplayNamePromptVisible(true);
             setShowWhatsNext(false);
+            setPendingShareRetryToken((token) => token + 1);
           }}
         />
       </AppViewportFrame>
@@ -661,6 +917,10 @@ export default function RootLayout() {
   const handleCompleteDisplayName = async () => {
     const nextName = displayNameDraft.trim();
     if (!supabaseUser?.id || !nextName) return;
+    if (!isUsableRecallDisplayName(nextName, supabaseUser.email)) {
+      // Block email / email-handle style names (e.g. bryanblitman1).
+      return;
+    }
 
     setIsSavingDisplayName(true);
     try {
@@ -759,6 +1019,7 @@ export default function RootLayout() {
               onChangeText={setDisplayNameDraft}
               onSubmit={handleCompleteDisplayName}
               isSaving={isSavingDisplayName}
+              email={supabaseUser?.email}
             />
           ) : null}
         </AppViewportFrame>

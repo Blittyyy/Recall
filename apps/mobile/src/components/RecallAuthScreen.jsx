@@ -25,12 +25,14 @@ import {
   signInWithAppleToRecall,
   signInToRecall,
   signUpToRecall,
+  updateRecallPassword,
 } from "../services/supabaseClient";
 import {
   setRecallWhatsNextPending,
   markRecallWhatsNextSignupIntent,
   clearRecallWhatsNextSignupIntent,
 } from "../services/onboardingService";
+import { trackEvent } from "../services/analytics";
 
 const BG = "#F7F7F5";
 const BLACK = "#111111";
@@ -193,7 +195,12 @@ function getAppleAuthenticationModule() {
   }
 }
 
-export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
+export function RecallAuthScreen({
+  mode = "create",
+  onBack,
+  onSwitchMode,
+  onPasswordUpdated,
+}) {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -203,6 +210,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
   });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState(null);
   const [infoMessage, setInfoMessage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -253,8 +261,11 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
   if (!fontsLoaded) return null;
 
   const isCreateMode = mode === "create";
+  const isResetPasswordMode = mode === "resetPassword";
   const usesHeroLayout = true;
-  const canSubmit = email.trim().length > 0 && password.length >= 6;
+  const canSubmit = isResetPasswordMode
+    ? password.length >= 6 && password === confirmPassword
+    : email.trim().length > 0 && password.length >= 6;
   const canRequestReset = email.trim().length > 0 && !isSubmitting && !isSendingReset;
   const AppleAuthentication = appleAuthModule;
 
@@ -293,6 +304,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
       });
       if (result.user?.id) {
         await setRecallWhatsNextPending(result.user.id).catch(() => null);
+        trackEvent("signup_completed");
       }
       if (!result.session) {
         setInfoMessage(
@@ -324,7 +336,9 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
 
     try {
       await requestRecallPasswordReset({ email: email.trim() });
-      setInfoMessage("Password reset email sent. Check your inbox.");
+      setInfoMessage(
+        "Password reset email sent. Open the link on this iPhone to choose a new password.",
+      );
     } catch (error) {
       setErrorMessage(
         getFriendlySupabaseError(
@@ -334,6 +348,35 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
       );
     } finally {
       setIsSendingReset(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (password.length < 6) {
+      setErrorMessage("Choose a password with at least 6 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage("Those passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    resetMessages();
+
+    try {
+      await updateRecallPassword({ password });
+      setInfoMessage("Password updated. You're back in Recall.");
+      await onPasswordUpdated?.();
+    } catch (error) {
+      setErrorMessage(
+        getFriendlySupabaseError(
+          error,
+          "Recall could not update your password right now.",
+        ),
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -406,6 +449,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
         if (isNewAccount) {
           await markRecallWhatsNextSignupIntent().catch(() => null);
           await setRecallWhatsNextPending(result.user.id).catch(() => null);
+          trackEvent("signup_completed");
         }
       }
     } catch (error) {
@@ -526,7 +570,11 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
                       maxWidth: isCreateMode ? 230 : 246,
                     }}
                   >
-                    {isCreateMode ? "Create your\nRecall account" : "Welcome back"}
+                    {isResetPasswordMode
+                      ? "Choose a new\npassword"
+                      : isCreateMode
+                        ? "Create your\nRecall account"
+                        : "Welcome back"}
                   </Text>
                   <Text
                     style={{
@@ -538,9 +586,11 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
                       marginTop: isCreateMode ? 0 : 6,
                     }}
                   >
-                    {isCreateMode
-                      ? "Start saving videos you\ndon't want to lose."
-                      : "Sign in to keep saving the\nvideos you don’t want to lose."}
+                    {isResetPasswordMode
+                      ? "Pick something you’ll remember,\nthen continue into Recall."
+                      : isCreateMode
+                        ? "Start saving videos you\ndon't want to lose."
+                        : "Sign in to keep saving the\nvideos you don’t want to lose."}
                   </Text>
                 </View>
 
@@ -587,21 +637,23 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
             </>
           )}
 
+          {!isResetPasswordMode ? (
+            <Field
+              label="Email"
+              value={email}
+              onChangeText={(value) => {
+                setEmail(value);
+                if (errorMessage) setErrorMessage(null);
+              }}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              isCreateMode={usesHeroLayout}
+              icon={<RecallProfileIcon name="contact" size={22} />}
+            />
+          ) : null}
           <Field
-            label="Email"
-            value={email}
-            onChangeText={(value) => {
-              setEmail(value);
-              if (errorMessage) setErrorMessage(null);
-            }}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            isCreateMode={usesHeroLayout}
-            icon={<RecallProfileIcon name="contact" size={22} />}
-          />
-          <Field
-            label="Password"
+            label={isResetPasswordMode ? "New password" : "Password"}
             value={password}
             onChangeText={(value) => {
               setPassword(value);
@@ -630,6 +682,21 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
               ) : null
             }
           />
+          {isResetPasswordMode ? (
+            <Field
+              label="Confirm password"
+              value={confirmPassword}
+              onChangeText={(value) => {
+                setConfirmPassword(value);
+                if (errorMessage) setErrorMessage(null);
+              }}
+              placeholder="Re-enter password"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              isCreateMode={usesHeroLayout}
+              icon={<Lock size={22} color="#6D6255" strokeWidth={2} />}
+            />
+          ) : null}
 
           {isCreateMode ? (
             <View
@@ -662,7 +729,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
             </View>
           ) : null}
 
-          {!isCreateMode ? (
+          {!isCreateMode && !isResetPasswordMode ? (
             <View
               style={{
                 marginTop: 4,
@@ -757,7 +824,13 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
 
         <View style={{ gap: 10, marginTop: isCreateMode ? 2 : 8 }}>
           <Pressable
-            onPress={isCreateMode ? handleCreateAccount : handleSignIn}
+            onPress={
+              isResetPasswordMode
+                ? handleUpdatePassword
+                : isCreateMode
+                  ? handleCreateAccount
+                  : handleSignIn
+            }
             disabled={!canSubmit || isSubmitting}
             style={({ pressed }) => ({
               borderRadius: 22,
@@ -765,8 +838,12 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
                 !canSubmit || isSubmitting
                   ? "#C7C7CC"
                   : pressed
-                    ? (isCreateMode ? "#1F1F1F" : "#B59472")
-                    : (isCreateMode ? BLACK : "#C0A07E"),
+                    ? isCreateMode || isResetPasswordMode
+                      ? "#1F1F1F"
+                      : "#B59472"
+                    : isCreateMode || isResetPasswordMode
+                      ? BLACK
+                      : "#C0A07E",
               paddingVertical: 17,
               paddingHorizontal: 24,
               alignItems: "center",
@@ -787,19 +864,23 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
               }}
             >
               {isSubmitting
-                ? isCreateMode
-                  ? "Creating Account..."
-                  : "Signing In..."
-                : isCreateMode
-                  ? "Create Account"
-                  : "Sign In"}
+                ? isResetPasswordMode
+                  ? "Updating Password..."
+                  : isCreateMode
+                    ? "Creating Account..."
+                    : "Signing In..."
+                : isResetPasswordMode
+                  ? "Update Password"
+                  : isCreateMode
+                    ? "Create Account"
+                    : "Sign In"}
             </Text>
             <View style={{ position: "absolute", right: 24 }}>
               <ArrowRight size={28} color={WHITE} strokeWidth={2.1} />
             </View>
           </Pressable>
 
-          {isAppleAvailable && AppleAuthentication ? (
+          {!isResetPasswordMode && isAppleAvailable && AppleAuthentication ? (
             <>
               <View
                 style={{
@@ -843,7 +924,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
             </>
           ) : null}
 
-          {!isCreateMode ? (
+          {!isCreateMode && !isResetPasswordMode ? (
             <View
               style={{
                 marginTop: 4,
@@ -884,6 +965,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
             </View>
           ) : null}
 
+          {!isResetPasswordMode ? (
           <View
             style={{
               flexDirection: "row",
@@ -922,6 +1004,7 @@ export function RecallAuthScreen({ mode = "create", onBack, onSwitchMode }) {
               </Text>
             </Pressable>
           </View>
+          ) : null}
         </View>
       </View>
     </View>
