@@ -330,6 +330,48 @@ export async function signOutOfRecall() {
   }
 }
 
+/**
+ * Permanently deletes the signed-in auth user via the delete-user edge function.
+ * Database rows cascade from auth.users → profiles → library tables.
+ */
+export async function deleteRecallAccount() {
+  assertSupabaseEnvConfigured();
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError) {
+    throw sessionError;
+  }
+  if (!session?.access_token || !session.user?.id) {
+    throw new Error("Sign in to delete your Recall account.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("delete-user", {
+    body: {},
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const payload = data && typeof data === "object" ? data : null;
+  if (
+    payload &&
+    typeof (payload as { error?: unknown }).error === "string"
+  ) {
+    throw new Error((payload as { error: string }).error);
+  }
+
+  // Session is invalid after auth user deletion; clear local auth state.
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // Ignore — account is already gone server-side.
+  }
+}
+
 export async function ensureRecallProfile({
   user,
 }: {

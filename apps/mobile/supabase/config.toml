@@ -1,5 +1,10 @@
 # Supabase CLI config for Recall mobile (apps/mobile).
-# Deploy from this directory: `supabase functions deploy fetch-web-metadata`
+# Deploy from this directory:
+#   supabase functions deploy fetch-web-metadata
+#   supabase functions deploy delete-user
 
 [functions.fetch-web-metadata]
+verify_jwt = true
+
+[functions.delete-user]
 verify_jwt = true

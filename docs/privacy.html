@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recall — Privacy Policy</title>
+  <meta name="description" content="Privacy Policy for the Recall iOS app. Learn what we collect, what we don’t, and how to request data deletion." />
+  <meta name="theme-color" content="#F7F5F2" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #F7F5F2;
+      --surface: #FFFCF8;
+      --text: #1E1915;
+      --secondary: #756E67;
+      --muted: #8E8E93;
+      --subtle: #F5F0EA;
+      --border: #E7DED3;
+      --mid: #B4AAA0;
+      --accent: #9C7B5A;
+      --shadow: #8D7A68;
+      --radius: 26px;
+      --max: 680px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(156, 123, 90, 0.07), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(231, 222, 211, 0.55), transparent 50%);
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    a:hover {
+      color: var(--text);
+    }
+
+    .wrap {
+      width: min(100% - 2.5rem, var(--max));
+      margin: 0 auto;
+      padding: 2.75rem 0 4.5rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #FFFCF8 0%, #F5EDE3 100%);
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 14px rgba(141, 122, 104, 0.1);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .brand-mark svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .brand-name {
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .brand-tag {
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-top: 0.15rem;
+    }
+
+    .hero h1 {
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+      font-size: clamp(2.15rem, 5vw, 2.65rem);
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+      font-weight: 400;
+      margin-bottom: 0.65rem;
+    }
+
+    .updated {
+      font-size: 0.9rem;
+      color: var(--secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    .intro {
+      font-size: 1.02rem;
+      color: var(--secondary);
+      line-height: 1.65;
+      max-width: 38em;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 5px 18px rgba(141, 122, 104, 0.06);
+      margin-bottom: 1.15rem;
+      padding: 1.5rem 1.4rem;
+    }
+
+    @media (min-width: 540px) {
+      .card {
+        padding: 1.75rem 1.65rem;
+      }
+    }
+
+    .card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 20px;
+      background: var(--subtle);
+      display: grid;
+      place-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .card-icon svg {
+      width: 18px;
+      height: 18px;
+      color: var(--accent);
+    }
+
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 0.45rem;
+    }
+
+    .card h2 {
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+      font-size: 1.35rem;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+
+    .card p {
+      color: var(--secondary);
+      font-size: 0.93rem;
+      line-height: 1.65;
+    }
+
+    .card p + p {
+      margin-top: 0.85rem;
+    }
+
+    .card ul {
+      margin-top: 0.85rem;
+      padding-left: 1.15rem;
+      color: var(--secondary);
+      font-size: 0.93rem;
+      line-height: 1.65;
+    }
+
+    .card li + li {
+      margin-top: 0.45rem;
+    }
+
+    .card li strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .highlight {
+      background: var(--subtle);
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      margin-top: 1rem;
+      font-size: 0.88rem;
+      color: var(--secondary);
+      line-height: 1.55;
+      border: 1px solid transparent;
+    }
+
+    .email-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin-top: 1.25rem;
+      background: var(--text);
+      color: var(--surface) !important;
+      font-size: 0.92rem;
+      font-weight: 500;
+      padding: 0.85rem 1.25rem;
+      border-radius: 999px;
+      box-shadow: 0 4px 14px rgba(30, 25, 21, 0.12);
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    .email-btn:hover {
+      background: #352e28;
+      color: var(--surface) !important;
+      transform: translateY(-1px);
+    }
+
+    footer {
+      margin-top: 2.75rem;
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem 1.5rem;
+    }
+
+    footer p {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    footer a {
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 3.5c-2.8 2.4-4.5 5.2-4.5 8.1 0 2.9 1.9 5.4 4.5 5.4s4.5-2.5 4.5-5.4c0-2.9-1.7-5.7-4.5-8.1Z" stroke="#9C7B5A" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M12 17v3.5" stroke="#9C7B5A" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M9.5 20.5h5" stroke="#9C7B5A" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Recall</div>
+        <div class="brand-tag">Privacy</div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <h1>Privacy Policy</h1>
+      <!-- Update this date before App Store submission -->
+      <p class="updated" id="privacy-last-updated">Last updated: <time datetime="2026-07-23">July 23, 2026</time></p>
+      <p class="intro">
+        Recall respects your privacy. Your saves and reminders belong to you —
+        they stay private to your account and are never sold to third parties.
+      </p>
+    </section>
+
+    <section class="card" aria-labelledby="collects-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="8" ry="3"/>
+          <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/>
+          <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>
+        </svg>
+      </div>
+      <p class="section-label">Data we collect</p>
+      <h2 id="collects-heading">What information Recall collects</h2>
+      <p>To provide the app, we store information you create and need to sign in:</p>
+      <ul>
+        <li><strong>Account details</strong> — such as your email address and authentication identifiers used to sign in.</li>
+        <li><strong>Your library</strong> — saved links, titles, notes, thumbnails, collections, and reminder schedules you create.</li>
+        <li><strong>App preferences</strong> — settings that help Recall work the way you expect (for example appearance or notification-related preferences stored with your account or on device).</li>
+      </ul>
+    </section>
+
+    <section class="card" aria-labelledby="does-not-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="m8 8 8 8"/>
+        </svg>
+      </div>
+      <p class="section-label">What we avoid</p>
+      <h2 id="does-not-heading">What information Recall does not collect</h2>
+      <ul>
+        <li>We do <strong>not</strong> sell your personal data.</li>
+        <li>We do <strong>not</strong> show advertising based on your saves.</li>
+        <li>We do <strong>not</strong> send the contents of your notes, titles, or URLs as analytics properties.</li>
+        <li>We do <strong>not</strong> use session replay or screen recording analytics.</li>
+        <li>Your saves are <strong>private to your account</strong> — not a public feed.</li>
+      </ul>
+    </section>
+
+    <section class="card" aria-labelledby="auth-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="section-label">Authentication</p>
+      <h2 id="auth-heading">Supabase authentication</h2>
+      <p>
+        Recall uses <strong>Supabase</strong> to authenticate users and securely store your account data and library.
+        When you sign in (for example with email or Apple), Supabase manages credentials and session tokens so your data stays tied to your account and syncs across your devices.
+      </p>
+      <p>
+        Access to your saves is restricted to your authenticated account. Recall uses Supabase to authenticate users and store account data.
+      </p>
+    </section>
+
+    <section class="card" aria-labelledby="analytics-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19V9"/>
+          <path d="M10 19V5"/>
+          <path d="M16 19v-7"/>
+          <path d="M22 19V8"/>
+        </svg>
+      </div>
+      <p class="section-label">Analytics</p>
+      <h2 id="analytics-heading">PostHog analytics</h2>
+      <p>
+        Recall uses <strong>PostHog</strong> to understand how the product is used so we can improve reliability and experience.
+        Our implementation is intentionally limited and privacy-focused:
+      </p>
+      <ul>
+        <li>We track a small set of product events (for example signing up, creating a save, setting a reminder, or opening a notification).</li>
+        <li>Event properties are limited to non-sensitive metadata such as platform type or result-count buckets — <strong>not</strong> URLs, titles, notes, or email addresses.</li>
+        <li>Session replay is disabled.</li>
+        <li>Users are identified with an opaque account ID where needed; analytics identity is reset on sign-out.</li>
+      </ul>
+      <div class="highlight">
+        Analytics help us improve Recall without collecting the contents of your saved links, notes, or titles.
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="notifications-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9a6 6 0 0 1 12 0c0 7 3 7 3 7H3s3 0 3-7"/>
+          <path d="M10 19a2 2 0 0 0 4 0"/>
+        </svg>
+      </div>
+      <p class="section-label">Reminders</p>
+      <h2 id="notifications-heading">Notifications</h2>
+      <p>
+        If you choose to enable notifications, Recall can send local reminders about saves you’ve scheduled to revisit.
+        Notification permission is optional and controlled in iOS Settings.
+      </p>
+      <p>
+        Reminder timing and related content stay associated with your account so reminders work as you configured them.
+        You can change or remove reminders inside the app at any time, and you can revoke notification access system-wide whenever you like.
+      </p>
+    </section>
+
+    <section class="card" aria-labelledby="deletion-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 7h16"/>
+          <path d="M10 11v6"/>
+          <path d="M14 11v6"/>
+          <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>
+          <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+      </div>
+      <p class="section-label">Your rights</p>
+      <h2 id="deletion-heading">Data deletion</h2>
+      <p>
+        You can delete your Recall account at any time from Profile → Privacy → Delete account. This permanently removes your account and associated Recall data.
+      </p>
+      <p>
+        If you experience any issues deleting your account, contact us at
+        <a href="mailto:GetRecall@outlook.com">GetRecall@outlook.com</a>.
+      </p>
+    </section>
+
+    <section class="card" aria-labelledby="contact-heading">
+      <div class="card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="18" height="14" rx="2"/>
+          <path d="m3 7 9 7 9-7"/>
+        </svg>
+      </div>
+      <p class="section-label">Contact</p>
+      <h2 id="contact-heading">Questions about privacy</h2>
+      <p>
+        If you have questions about this policy or how Recall handles your information, reach us at
+        <a href="mailto:GetRecall@outlook.com">GetRecall@outlook.com</a>.
+      </p>
+    </section>
+
+    <footer>
+      <p>&copy; 2026 Recall</p>
+      <p>
+        <a href="index.html">Support</a>
+        ·
+        Privacy Policy
+      </p>
+    </footer>
+  </div>
+</body>
+</html>
