@@ -11,7 +11,6 @@ import Reanimated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { RecallReminderIcon } from "../../components/RecallReminderIcon";
 import { RecallActionIcon } from "../../components/RecallActionIcon";
 import {
   useFonts,
@@ -78,23 +77,18 @@ function getCardExiting(reduceMotion) {
 const SECTION_META = {
   today: {
     label: "Today",
-    iconName: "today",
   },
   tomorrow: {
     label: "Tomorrow",
-    iconName: "tomorrow",
   },
   thisWeek: {
     label: "This Week",
-    iconName: "this-week",
   },
   nextWeek: {
     label: "Next Week",
-    iconName: "this-week",
   },
   later: {
     label: "Later",
-    iconName: "later",
   },
 };
 
@@ -120,7 +114,7 @@ function ReminderSectionHeader({
   onToggle,
   reduceMotion,
 }) {
-  const { label, iconName } = SECTION_META[sectionKey];
+  const { label } = SECTION_META[sectionKey];
   const rotation = useSharedValue(expanded ? 0 : -90);
 
   useEffect(() => {
@@ -147,19 +141,6 @@ function ReminderSectionHeader({
         opacity: pressed ? 0.82 : 1,
       })}
     >
-      <View
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 19,
-          backgroundColor: ACCENT_SOFT,
-          alignItems: "center",
-          justifyContent: "center",
-          marginRight: 10,
-        }}
-      >
-        <RecallReminderIcon name={iconName} size={18} />
-      </View>
       <Text
         style={{
           flex: 1,
@@ -274,16 +255,12 @@ function ReminderCard({ item, onOpen, onEdit }) {
         >
           <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
               backgroundColor: ACCENT_SOFT,
               borderRadius: 10,
               paddingHorizontal: 7,
               paddingVertical: 4,
             }}
           >
-            <RecallReminderIcon name="today" size={11} />
             <Text
               style={{
                 fontSize: 9.5,
@@ -453,7 +430,7 @@ export default function RemindersScreen() {
       <EmptyRemindersState
         topInset={insets.top}
         bottomInset={insets.bottom}
-        onCreateReminder={() => router.push("/(tabs)/saved")}
+        onCreateReminder={() => router.navigate("/(tabs)/saved")}
       />
     );
   }

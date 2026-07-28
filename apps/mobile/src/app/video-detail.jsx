@@ -9,7 +9,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  BellOff,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -93,9 +92,6 @@ export default function VideoDetailScreen() {
   const addCollection = useRecallStore((s) => s.addCollection);
   const archiveVideo = useRecallStore((s) => s.archiveVideo);
   const removeVideo = useRecallStore((s) => s.removeVideo);
-  const setDevWorthRevisitingForTesting = useRecallStore(
-    (s) => s.setDevWorthRevisitingForTesting,
-  );
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -247,18 +243,6 @@ export default function VideoDetailScreen() {
     );
   };
 
-  const makeWorthRevisitingForDebug = async () => {
-    const enabled = await setDevWorthRevisitingForTesting(video.id);
-    if (!enabled) {
-      return;
-    }
-
-    Alert.alert(
-      "Dev: Worth Revisiting enabled",
-      "This save will appear in Worth Revisiting for testing. The saved date shown on cards stays accurate.",
-    );
-  };
-
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <View
@@ -286,99 +270,94 @@ export default function VideoDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroCard}>
-            <Animated.View style={heroStyle}>
-              <VideoThumbnail
-                thumbnailUrl={video.thumbnailUrl}
-                videoUrl={video.videoUrl}
-                videoId={video.id}
-                platform={video.platform}
-                variant="detailHero"
-                showPlatformBadge={false}
-              >
-                <View style={styles.platformBadge}>
-                  <PlatformIcon
-                    platform={video.platform}
-                    url={video.videoUrl}
-                    size={14}
-                  />
-                  <Text style={styles.platformText}>
-                    {getPlatformDisplayName(video.platform, video.videoUrl)}
-                  </Text>
-                </View>
-              </VideoThumbnail>
-            </Animated.View>
-          </View>
+          <Animated.View style={heroStyle}>
+            <VideoThumbnail
+              thumbnailUrl={video.thumbnailUrl}
+              videoUrl={video.videoUrl}
+              videoId={video.id}
+              platform={video.platform}
+              variant="detailHero"
+              showPlatformBadge={false}
+            >
+              <View style={styles.platformBadge}>
+                <PlatformIcon
+                  platform={video.platform}
+                  url={video.videoUrl}
+                  size={14}
+                />
+                <Text style={styles.platformText}>
+                  {getPlatformDisplayName(video.platform, video.videoUrl)}
+                </Text>
+              </View>
+            </VideoThumbnail>
+          </Animated.View>
+        </View>
 
-          {isVideoUnavailable(video) ? (
-            <View
+        {isVideoUnavailable(video) ? (
+          <View
+            style={{
+              marginTop: 16,
+              backgroundColor: "#F3EFEA",
+              borderRadius: 18,
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+            }}
+          >
+            <Text
               style={{
-                marginTop: 16,
-                backgroundColor: "#F3EFEA",
-                borderRadius: 18,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
+                color: GREY_TEXT,
+                fontSize: 14,
+                lineHeight: 20,
+                fontFamily: "Inter_500Medium",
               }}
             >
-              <Text
-                style={{
-                  color: GREY_TEXT,
-                  fontSize: 14,
-                  lineHeight: 20,
-                  fontFamily: "Inter_500Medium",
-                }}
-              >
-                This video may have been deleted or made private.
-              </Text>
-            </View>
-          ) : null}
-
-          <Animated.View style={[{ marginTop: 24 }, titleStyle]}>
-            <Text style={styles.title}>{getDisplayTitle(video.title)}</Text>
-            <View style={styles.creatorRow}>
-              <RecallProfileIcon name="user" size={14} />
-              <Text style={styles.creator}>{video.creator}</Text>
-            </View>
-            <Text style={styles.savedPrompt}>
-              {getSavedWeeksLabel(video.savedAt)}. Still interested?
+              This video may have been deleted or made private.
             </Text>
-          </Animated.View>
+          </View>
+        ) : null}
 
-          <Animated.View style={belowTitleStyle}>
-            <Pressable
-              onPress={openVideo}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                { backgroundColor: pressed ? "#1F1F1F" : BLACK },
-              ]}
-            >
-              <RecallActionIcon name="play" size={17} />
-              <Text style={styles.primaryButtonText}>{openActionLabel}</Text>
-            </Pressable>
+        <Animated.View style={[{ marginTop: 24 }, titleStyle]}>
+          <Text style={styles.title}>{getDisplayTitle(video.title)}</Text>
+          <View style={styles.creatorRow}>
+            <RecallProfileIcon name="user" size={14} />
+            <Text style={styles.creator}>{video.creator}</Text>
+          </View>
+          <Text style={styles.savedPrompt}>
+            {getSavedWeeksLabel(video.savedAt)}. Still interested?
+          </Text>
+        </Animated.View>
 
-            <View style={styles.card}>
-              <InfoRow
-                icon={<RecallSavedContentIcon name="saved" size={17} />}
-                label="Saved"
-                value={`${getSavedWeeksLabel(video.savedAt)}\n${savedDate}`}
-              />
-              <InfoRow
-                icon={<RecallSavedContentIcon name="collections" size={17} />}
-                label="Category"
-                value={`${category.emoji} ${category.label}`}
-              />
-              <InfoRow
-                icon={<RecallReminderIcon name="worth-revisiting" size={17} />}
-                label="Revisits"
-                value={openedLabel}
-              />
-              <InfoRow
-                icon={<RecallSavedContentIcon name="last-opened" size={17} />}
-                label="Last opened"
-                value={lastOpened ? `${lastOpened}` : "Not opened yet"}
-                isLast
-              />
-            </View>
-          </Animated.View>
+        <Animated.View style={belowTitleStyle}>
+          <Pressable
+            onPress={openVideo}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: pressed ? "#1F1F1F" : BLACK },
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>{openActionLabel}</Text>
+          </Pressable>
+
+          <View style={styles.card}>
+            <InfoRow
+              label="Saved"
+              value={`${getSavedWeeksLabel(video.savedAt)}\n${savedDate}`}
+            />
+            <InfoRow
+              label="Category"
+              value={`${category.emoji} ${category.label}`}
+            />
+            <InfoRow
+              label="Revisits"
+              value={openedLabel}
+            />
+            <InfoRow
+              label="Last opened"
+              value={lastOpened ? `${lastOpened}` : "Not opened yet"}
+              isLast
+            />
+          </View>
+        </Animated.View>
 
           <View style={styles.card}>
             <ActionRow
@@ -396,13 +375,7 @@ export default function VideoDetailScreen() {
                     ? "This one-time reminder already fired."
                     : "Set a gentle reminder for this save."
               }
-              icon={
-                video.reminderEnabled ? (
-                  <RecallReminderIcon name="bell" size={16} />
-                ) : (
-                  <BellOff size={16} color={GREY_TEXT} />
-                )
-              }
+              icon={<RecallReminderIcon name="bell" size={16} />}
               onPress={() => setShowReminderSetup(true)}
             />
             <View style={styles.groupDivider} />
@@ -420,7 +393,6 @@ export default function VideoDetailScreen() {
 
           <View style={styles.card}>
             <InfoRow
-              icon={<RecallReminderIcon name="bell" size={17} />}
               label="Reminder"
               value={
                 showActiveReminderSchedule
@@ -431,7 +403,6 @@ export default function VideoDetailScreen() {
               }
             />
             <InfoRow
-              icon={<RecallReminderIcon name="worth-revisiting" size={17} />}
               label="Signal"
               value={
                 isWorthRevisitingEligible(video)
@@ -458,15 +429,6 @@ export default function VideoDetailScreen() {
             />
           </View>
 
-          {__DEV__ ? (
-            <View style={{ marginTop: 12 }}>
-              <SecondaryButton
-                icon={<RecallReminderIcon name="worth-revisiting" size={16} />}
-                label="Make Worth Revisiting"
-                onPress={makeWorthRevisitingForDebug}
-              />
-            </View>
-          ) : null}
       </ScrollView>
 
       <ReminderSetupModal
@@ -595,7 +557,7 @@ function ActionIconButton({ onPress, icon }) {
 function InfoRow({ icon, label, value, isLast = false }) {
   return (
     <View style={[styles.infoRow, isLast ? { borderBottomWidth: 0 } : null]}>
-      <View style={styles.infoIcon}>{icon}</View>
+      {icon ? <View style={styles.infoIcon}>{icon}</View> : null}
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value}</Text>
     </View>

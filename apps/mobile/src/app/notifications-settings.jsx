@@ -29,7 +29,6 @@ import {
   getNotificationPreferences,
   requestNotificationPermission,
   resyncReminderNotifications,
-  scheduleDebugNotificationInTenSeconds,
   updateNotificationPreferences,
 } from "../services/recallNotifications";
 import { RECALL_COLORS } from "../constants/recallTheme";
@@ -186,7 +185,6 @@ export default function NotificationsSettingsScreen() {
     resurfacingNotifications: false,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [testMessage, setTestMessage] = useState("");
   const reminderFollowUpCount = videos.filter(
     (video) => (video.reminderFollowUpDelayMinutes ?? 0) > 0,
   ).length;
@@ -234,21 +232,6 @@ export default function NotificationsSettingsScreen() {
     });
     setPreferences(next);
     await resyncReminderNotifications(videos, { requestPermission: value });
-  };
-
-  const handleDebugTestNotification = async () => {
-    setTestMessage("");
-    const result = await scheduleDebugNotificationInTenSeconds();
-    if (!result.scheduled) {
-      setTestMessage(
-        result.permissionStatus === "denied"
-          ? "Notification permission is denied on this device."
-          : "Test notification could not be scheduled.",
-      );
-      return;
-    }
-
-    setTestMessage("Test notification scheduled for about 10 seconds from now.");
   };
 
   const showPersistentBannerHelp = () => {
@@ -577,80 +560,6 @@ export default function NotificationsSettingsScreen() {
             <ChevronRight size={17} color={GREY_MID} />
           </Pressable>
         </SettingsCard>
-
-        {__DEV__ && Platform.OS !== "web" ? (
-          <SettingsCard>
-            <View
-              style={{
-                paddingHorizontal: 18,
-                paddingTop: 18,
-                paddingBottom: 12,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontFamily: "Inter_600SemiBold",
-                  color: BLACK,
-                  marginBottom: 4,
-                }}
-              >
-                Dev notification test
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontFamily: "Inter_400Regular",
-                  color: GREY_TEXT,
-                  lineHeight: 18,
-                }}
-              >
-                Schedule a local notification 10 seconds from now and log the
-                trigger details.
-              </Text>
-            </View>
-
-            <Divider />
-
-            <Pressable
-              onPress={handleDebugTestNotification}
-              style={({ pressed }) => ({
-                marginHorizontal: 18,
-                marginTop: 16,
-                marginBottom: testMessage ? 10 : 18,
-                borderRadius: 16,
-                backgroundColor: pressed ? "#1F1F1F" : BLACK,
-                paddingVertical: 14,
-                alignItems: "center",
-              })}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontFamily: "Inter_600SemiBold",
-                  color: WHITE,
-                }}
-              >
-                Test notification in 10 seconds
-              </Text>
-            </Pressable>
-
-            {testMessage ? (
-              <Text
-                style={{
-                  paddingHorizontal: 18,
-                  paddingBottom: 18,
-                  fontSize: 12,
-                  fontFamily: "Inter_400Regular",
-                  color: GREY_TEXT,
-                  lineHeight: 18,
-                }}
-              >
-                {testMessage}
-              </Text>
-            ) : null}
-          </SettingsCard>
-        ) : null}
 
         {Platform.OS === "web" ? (
           <View

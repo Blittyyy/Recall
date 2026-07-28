@@ -222,8 +222,6 @@ export default function SavingFromOtherAppsScreen() {
           style={{
             borderRadius: 20,
             backgroundColor: RECALL_COLORS.surface,
-            borderWidth: 1,
-            borderColor: RECALL_COLORS.border,
             paddingHorizontal: 18,
             paddingVertical: 16,
           }}

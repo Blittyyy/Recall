@@ -363,6 +363,47 @@ export function formatReminderScheduleLabel(video, now = new Date()) {
   return `${frequency} • ${time}`;
 }
 
+/** Soft confirmation copy after saving a reminder, e.g. "We'll remind you on Tomorrow at 9:00 AM." */
+export function formatReminderConfirmationSubtitle(reminder, now = new Date()) {
+  const time = formatDisplayReminderTime(reminder?.reminderTime);
+  const nextDate = getNextReminderDate(
+    {
+      reminderTime: reminder?.reminderTime,
+      reminderFrequency: reminder?.reminderFrequency ?? "Daily",
+      reminderDays: reminder?.reminderDays ?? [],
+      reminderEnabled: true,
+      hasReminder: true,
+      archived: false,
+    },
+    now,
+  );
+
+  if (!nextDate) {
+    return `We'll remind you at ${time}.`;
+  }
+
+  const daysAway = Math.round(
+    (getStartOfDay(nextDate).getTime() - getStartOfDay(now).getTime()) / DAY_MS,
+  );
+
+  let dayLabel = "soon";
+  if (daysAway <= 0) dayLabel = "Today";
+  else if (daysAway === 1) dayLabel = "Tomorrow";
+  else if (daysAway <= 7) {
+    dayLabel =
+      nextDate.toLocaleDateString([], { weekday: "long" }) ||
+      REMINDER_WEEKDAY_NAMES[nextDate.getDay()] ||
+      "soon";
+  } else {
+    dayLabel = nextDate.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  return `We'll remind you on ${dayLabel} at ${time}.`;
+}
+
 export function getScheduledReminderVideos(videos, now = new Date()) {
   return videos
     .filter((video) => !video.archived && video.hasReminder)

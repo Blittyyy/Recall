@@ -187,8 +187,6 @@ export default function PrivacyScreen() {
             borderRadius: 26,
             overflow: "hidden",
             backgroundColor: SURFACE,
-            borderWidth: 1,
-            borderColor: BORDER,
             shadowColor: "#8D7A68",
             shadowOffset: { width: 0, height: 5 },
             shadowOpacity: 0.06,

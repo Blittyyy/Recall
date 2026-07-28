@@ -251,6 +251,8 @@ function SectionHeader({
   overlayAction = false,
 }) {
   const theme = useRecallTheme();
+  const reduceMotion = useAppearanceStore((state) => state.reduceMotion);
+  const actionPress = useRef(new Animated.Value(1)).current;
   const accentColor = theme.dark ? theme.accent : TAN_ACCENT;
   const titleColor = editorial
     ? theme.dark
@@ -265,6 +267,32 @@ function SectionHeader({
   // Use warm sand/tan accent — DynamicColorIOS can stay "light" black when
   // the in-app theme is Dark but the system scheme is still light.
   const actionColor = editorial ? accentColor : BLUE;
+
+  const handleActionIn = () => {
+    if (reduceMotion) {
+      actionPress.setValue(0.94);
+      return;
+    }
+    Animated.spring(actionPress, {
+      toValue: 0.94,
+      useNativeDriver: true,
+      tension: 320,
+      friction: 18,
+    }).start();
+  };
+
+  const handleActionOut = () => {
+    if (reduceMotion) {
+      actionPress.setValue(1);
+      return;
+    }
+    Animated.spring(actionPress, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 280,
+      friction: 14,
+    }).start();
+  };
 
   return (
     <View
@@ -329,30 +357,43 @@ function SectionHeader({
       </View>
       </View>
       {action ? (
-        <Pressable
-          onPress={onAction}
+        <Animated.View
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 4,
-            paddingLeft: overlayAction ? 4 : 12,
-            paddingTop: editorial ? 4 : 0,
+            transform: [{ scale: actionPress }],
+            opacity: actionPress.interpolate({
+              inputRange: [0.94, 1],
+              outputRange: [0.72, 1],
+            }),
             ...(overlayAction
               ? { position: "absolute", right: px, top: 0, zIndex: 2 }
               : null),
           }}
         >
-          <Text
+          <Pressable
+            onPress={onAction}
+            onPressIn={handleActionIn}
+            onPressOut={handleActionOut}
+            hitSlop={8}
             style={{
-              fontSize: 14,
-              fontFamily: editorial ? SERIF : "Inter_500Medium",
-              color: actionColor,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              paddingLeft: overlayAction ? 4 : 12,
+              paddingTop: editorial ? 4 : 0,
             }}
           >
-            {action}
-          </Text>
-          <ChevronRight size={14} color={actionColor} />
-        </Pressable>
+            <Text
+              style={{
+                fontSize: 14,
+                fontFamily: editorial ? SERIF : "Inter_500Medium",
+                color: actionColor,
+              }}
+            >
+              {action}
+            </Text>
+            <ChevronRight size={14} color={actionColor} />
+          </Pressable>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -971,6 +1012,8 @@ function ReminderCard({
             <Pressable
               onPress={startCompletion}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Mark reminder as done"
               style={({ pressed }) => ({
                 opacity: pressed ? 0.88 : 1,
               })}
@@ -991,7 +1034,7 @@ function ReminderCard({
                 }}
               >
                 <Reanimated.View style={playIconStyle}>
-                  <Play size={13} color={WHITE} fill={WHITE} />
+                  <Check size={16} color={WHITE} strokeWidth={2.6} />
                 </Reanimated.View>
                 <Reanimated.View
                   style={[
@@ -1648,7 +1691,7 @@ export default function HomeScreen() {
               title="Recently saved"
               subtitle="Fresh additions from the last few days."
               action="View library"
-              onAction={() => router.push("/(tabs)/saved")}
+              onAction={() => router.navigate("/(tabs)/saved")}
               editorial
               showAccent
               subtitleOneLine
@@ -1686,7 +1729,7 @@ export default function HomeScreen() {
               title="Collections"
               subtitle="Things you cared enough to save for later"
               action="See all"
-              onAction={() => router.push("/(tabs)/saved")}
+              onAction={() => router.navigate("/(tabs)/saved")}
             />
             <ScrollView
               horizontal
@@ -1708,7 +1751,7 @@ export default function HomeScreen() {
                 />
               ))}
               <Pressable
-                onPress={() => router.push("/(tabs)/saved")}
+                onPress={() => router.navigate("/(tabs)/saved")}
                 style={{
                   width: 148,
                   height: 112,
@@ -1758,7 +1801,7 @@ export default function HomeScreen() {
               title="Today's reminders"
               subtitle="Videos you've scheduled"
               action="Manage"
-              onAction={() => router.push("/(tabs)/calendar")}
+              onAction={() => router.navigate("/(tabs)/calendar")}
               editorial
               showAccent
             />
@@ -1792,7 +1835,7 @@ export default function HomeScreen() {
               title="From Your Saves"
               subtitle="Rediscover what you've collected"
               action="See all"
-              onAction={() => router.push("/(tabs)/saved")}
+              onAction={() => router.navigate("/(tabs)/saved")}
             />
 
             {/* Category chips */}

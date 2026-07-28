@@ -2215,7 +2215,7 @@ export default function LibraryScreen() {
                       withReminders === 1
                         ? "1 scheduled"
                         : `${withReminders} scheduled`,
-                    onPress: () => router.push("/(tabs)/calendar"),
+                    onPress: () => router.navigate("/(tabs)/calendar"),
                   },
                   {
                     value: worthRevisitingCount,

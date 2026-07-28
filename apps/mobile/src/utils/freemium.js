@@ -19,15 +19,24 @@ export const PAYWALL_TRIGGERS = {
 };
 
 /**
- * Temporary TestFlight / internal-beta soft-lock bypass.
+ * Free v1.0 launch: paywalls and Pro prompts are fully off.
+ * Set to true (and wire purchases) when Recall Pro ships.
+ */
+export function arePaywallsEnabled() {
+  return false;
+}
+
+/**
+ * Freemium save/reminder/collection limits.
  *
- * Limits stay OFF until this is explicitly enabled for App Store production:
- *   EXPO_PUBLIC_ENFORCE_FREEMIUM_LIMITS=true
- *
- * Leave unset (or set to "false") for development, preview, and TestFlight builds.
+ * Only meaningful when paywalls are enabled. For free v1.0 this stays off
+ * even if EXPO_PUBLIC_ENFORCE_FREEMIUM_LIMITS is set.
  */
 export function areFreemiumLimitsEnforced() {
-  return process.env.EXPO_PUBLIC_ENFORCE_FREEMIUM_LIMITS === "true";
+  return (
+    arePaywallsEnabled() &&
+    process.env.EXPO_PUBLIC_ENFORCE_FREEMIUM_LIMITS === "true"
+  );
 }
 
 function isLimitPaywallTrigger(trigger) {
@@ -98,11 +107,15 @@ export function shouldShowPaywall({
   activeRemindersCount = 0,
   collectionsCount = 0,
 } = {}) {
+  if (!arePaywallsEnabled()) {
+    return false;
+  }
+
   if (isProTier(tier)) {
     return false;
   }
 
-  // Beta / TestFlight: never soft-lock saves, reminders, or collections.
+  // When paywalls are on but limits are soft: never block saves/reminders/collections.
   if (!areFreemiumLimitsEnforced() && isLimitPaywallTrigger(trigger)) {
     return false;
   }

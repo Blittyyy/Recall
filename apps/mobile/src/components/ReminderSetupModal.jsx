@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Dimensions,
   Linking,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -23,12 +26,16 @@ import {
   WHITE,
 } from "../constants/addScreen";
 import { VideoThumbnail } from "./VideoThumbnail";
-import { getCategoryMeta } from "../utils/resurfacing";
+import {
+  formatReminderConfirmationSubtitle,
+  getCategoryMeta,
+} from "../utils/resurfacing";
 import { getDisplayTitle } from "../utils/titleHelpers";
 import {
   requestNotificationPermission,
   resolveReminderNotificationPermissionGate,
 } from "../services/recallNotifications";
+import { showSuccessToast } from "../store/useSuccessToastStore";
 
 const TIME_PRESETS = [
   { id: "morning", label: "Morning", time: "07:00 AM" },
@@ -60,6 +67,10 @@ const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) =>
 );
 const MERIDIEM_OPTIONS = ["AM", "PM"];
 const WEEKDAY_IDS = [1, 2, 3, 4, 5];
+const SHEET_MAX_HEIGHT = Dimensions.get("window").height * 0.88;
+const HANDLE_AREA_HEIGHT = 28;
+const DISMISS_DISTANCE = 96;
+const DISMISS_VELOCITY = 0.95;
 
 export function ReminderSetupModal({
   visible,
@@ -87,6 +98,9 @@ export function ReminderSetupModal({
   const [permissionSheetMode, setPermissionSheetMode] = useState(null);
   const [pendingReminderPayload, setPendingReminderPayload] = useState(null);
   const [isPermissionBusy, setIsPermissionBusy] = useState(false);
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const hasExistingReminder = initialReminder?.hasReminder ?? false;
   const isFirstTimeSetup = !hasExistingReminder && !allowDelete;
@@ -143,7 +157,56 @@ export function ReminderSetupModal({
       initialReminder?.reminderFollowUpDelayMinutes ?? null,
     );
     setShowCustomTimeModal(false);
-  }, [hasExistingReminder, initialReminder, visible]);
+    // Reset only on open so a swipe-dismiss doesn't flash back mid-close.
+    sheetTranslateY.setValue(0);
+  }, [hasExistingReminder, initialReminder, sheetTranslateY, visible]);
+
+  const handlePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          gesture.dy > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_, gesture) => {
+          sheetTranslateY.setValue(Math.max(0, gesture.dy));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const shouldDismiss =
+            gesture.dy > DISMISS_DISTANCE || gesture.vy > DISMISS_VELOCITY;
+          if (shouldDismiss) {
+            Animated.timing(sheetTranslateY, {
+              toValue: SHEET_MAX_HEIGHT,
+              duration: 180,
+              useNativeDriver: true,
+            }).start(({ finished }) => {
+              if (finished) {
+                // Keep the sheet off-screen until `visible` flips false.
+                // Resetting translateY here makes it flash open before close.
+                onCloseRef.current?.();
+              }
+            });
+            return;
+          }
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            damping: 22,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            damping: 22,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [sheetTranslateY],
+  );
 
   const handleSelectPreset = (preset) => {
     if (preset.id === "custom") {
@@ -244,6 +307,13 @@ export function ReminderSetupModal({
     setPendingReminderPayload(null);
     setIsPermissionBusy(false);
     onSave(payload);
+
+    if (payload?.reminderEnabled) {
+      showSuccessToast({
+        title: "Reminder set",
+        subtitle: formatReminderConfirmationSubtitle(payload),
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -342,24 +412,30 @@ export function ReminderSetupModal({
       onRequestClose={onClose}
     >
       <View style={{ flex: 1 }}>
-        <Pressable
-          onPress={onClose}
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            backgroundColor: "rgba(0,0,0,0.34)",
-          }}
-        />
-        <View
+        <Animated.View
           style={{
             flex: 1,
-            justifyContent: "flex-end",
+            transform: [{ translateY: sheetTranslateY }],
           }}
-          pointerEvents="box-none"
         >
+          <Pressable
+            onPress={onClose}
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: "rgba(0,0,0,0.34)",
+            }}
+          />
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "flex-end",
+            }}
+            pointerEvents="box-none"
+          >
           {showCustomTimeModal ? (
             <View style={styles.timeOverlayShell}>
               <Pressable
@@ -457,29 +533,44 @@ export function ReminderSetupModal({
               backgroundColor: WHITE,
               borderTopLeftRadius: 28,
               borderTopRightRadius: 28,
-              maxHeight: "88%",
+              maxHeight: SHEET_MAX_HEIGHT,
             }}
           >
+            <View
+              {...handlePanResponder.panHandlers}
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                height: HANDLE_AREA_HEIGHT,
+                paddingTop: 10,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss reminder setup"
+            >
+              <View
+                style={{
+                  width: 38,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: GREY_MID,
+                }}
+              />
+            </View>
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bounces={false}
+              alwaysBounceVertical={false}
+              overScrollMode="never"
+              style={{ flexGrow: 0, maxHeight: SHEET_MAX_HEIGHT - HANDLE_AREA_HEIGHT }}
               contentContainerStyle={{
                 paddingHorizontal: 22,
-                paddingTop: 14,
+                paddingTop: 6,
                 paddingBottom: (insets?.bottom ?? 0) + 28,
+                flexGrow: 0,
               }}
             >
-                <View
-                  style={{
-                    width: 38,
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: GREY_MID,
-                    alignSelf: "center",
-                    marginBottom: 20,
-                  }}
-                />
-
                 <View
                   style={{
                     flexDirection: "row",
@@ -691,7 +782,8 @@ export function ReminderSetupModal({
                 </View>
             </ScrollView>
           </View>
-        </View>
+          </View>
+        </Animated.View>
 
         <NotificationPermissionSheets
           embedded

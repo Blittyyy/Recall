@@ -11,6 +11,7 @@ import { RecallReminderIcon } from "./RecallReminderIcon";
 import { usePaywallStore } from "../store/usePaywallStore";
 import {
   areFreemiumLimitsEnforced,
+  arePaywallsEnabled,
   PAYWALL_TRIGGERS,
 } from "../utils/freemium";
 import { RECALL_COLORS } from "../constants/recallTheme";
@@ -55,7 +56,8 @@ export function RecallPaywallModal() {
   const hidePaywall = usePaywallStore((state) => state.hidePaywall);
   const purchasesAvailable = areFreemiumLimitsEnforced();
 
-  if (!fontsLoaded) return null;
+  // Free v1.0: keep component for a future Pro launch, but never render.
+  if (!arePaywallsEnabled() || !fontsLoaded) return null;
 
   return (
     <Modal

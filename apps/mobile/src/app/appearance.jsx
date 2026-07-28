@@ -149,7 +149,7 @@ export default function AppearanceScreen() {
         </Text>
 
         <Text style={{ marginLeft: 4, marginBottom: 10, fontFamily: "Inter_600SemiBold", fontSize: 14 * textScale, color: colors.text }}>Theme</Text>
-        <View style={{ padding: 6, borderRadius: 24, backgroundColor: colors.surface, flexDirection: "row", gap: 6, borderWidth: 1, borderColor: colors.border, marginBottom: 18 }}>
+        <View style={{ padding: 6, borderRadius: 24, backgroundColor: colors.surface, flexDirection: "row", gap: 6, marginBottom: 18 }}>
           {["System", "Light", "Dark"].map((option) => {
             const selected = theme === option;
             return (
@@ -174,7 +174,7 @@ export default function AppearanceScreen() {
           })}
         </View>
 
-        <View style={{ borderRadius: 26, overflow: "hidden", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: "#8D7A68", shadowOffset: { width: 0, height: 5 }, shadowOpacity: resolvedTheme === "dark" ? 0 : 0.06, shadowRadius: 18, elevation: 2 }}>
+        <View style={{ borderRadius: 26, overflow: "hidden", backgroundColor: colors.surface, shadowColor: "#8D7A68", shadowOffset: { width: 0, height: 5 }, shadowOpacity: resolvedTheme === "dark" ? 0 : 0.06, shadowRadius: 18, elevation: 2 }}>
           <ToggleRow
             colors={colors}
             icon={<RecallReminderIcon name="sparkles" size={19} />}

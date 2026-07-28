@@ -19,6 +19,8 @@ import { RecallAuthScreen } from "../components/RecallAuthScreen";
 import { RecallOnboardingScreen } from "../components/RecallOnboardingScreen";
 import { RecallWhatsNextScreen } from "../components/RecallWhatsNextScreen";
 import { RecallPaywallModal } from "../components/RecallPaywallModal";
+// Paywall modal stays mounted but is a no-op while arePaywallsEnabled() is false (free v1.0).
+import { SuccessToastHost } from "../components/SuccessToastHost";
 import { AppViewportFrame } from "../components/AppViewportFrame";
 import {
   getRecallGuestOnboardingComplete,
@@ -1024,6 +1026,7 @@ function RootLayoutContent() {
           ) : null}
         </AppViewportFrame>
         <RecallPaywallModal />
+        <SuccessToastHost />
       </GestureHandlerRootView>
     </QueryClientProvider>
   );

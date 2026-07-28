@@ -1,5 +1,12 @@
-import { useEffect, useState } from "react";
-import { Platform, Pressable, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import {
@@ -219,6 +226,8 @@ export function RecallAuthScreen({
   const [rememberMe, setRememberMe] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(Platform.OS === "ios");
   const [appleAuthModule, setAppleAuthModule] = useState(null);
+  const scrollRef = useRef(null);
+  const hasAuthMessage = Boolean(errorMessage || infoMessage);
 
   useEffect(() => {
     let isMounted = true;
@@ -257,6 +266,17 @@ export function RecallAuthScreen({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasAuthMessage) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hasAuthMessage, errorMessage, infoMessage]);
 
   if (!fontsLoaded) return null;
 
@@ -492,8 +512,21 @@ export function RecallAuthScreen({
         paddingHorizontal: 24,
       }}
     >
-      <View style={{ flex: 1, justifyContent: "space-between" }}>
-        <View>
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: BG }}
+        contentContainerStyle={{ flexGrow: 1, backgroundColor: BG }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={hasAuthMessage}
+        scrollEnabled={hasAuthMessage}
+        contentInsetAdjustmentBehavior="never"
+        onContentSizeChange={() => {
+          if (hasAuthMessage) {
+            scrollRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
+      >
           {usesHeroLayout ? (
             <>
               {isCreateMode ? (
@@ -517,9 +550,7 @@ export function RecallAuthScreen({
                 >
                   <ChevronLeft size={17} color={BLACK} />
                 </Pressable>
-              ) : (
-                <View style={{ height: 48 }} />
-              )}
+              ) : null}
 
               <View
                 style={{
@@ -527,7 +558,7 @@ export function RecallAuthScreen({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 12,
-                  marginTop: -18,
+                  marginTop: isCreateMode ? -18 : 0,
                   marginBottom: 6,
                 }}
               >
@@ -547,7 +578,7 @@ export function RecallAuthScreen({
               <View
                 style={{
                   position: "relative",
-                  minHeight: isCreateMode ? 182 : 198,
+                  minHeight: isCreateMode ? 182 : 168,
                   width: "100%",
                   marginBottom: 0,
                 }}
@@ -556,7 +587,7 @@ export function RecallAuthScreen({
                   style={{
                     width: "100%",
                     maxWidth: isCreateMode ? 230 : 246,
-                    paddingTop: isCreateMode ? 14 : 30,
+                    paddingTop: isCreateMode ? 14 : 18,
                   }}
                 >
                   <Text
@@ -600,7 +631,7 @@ export function RecallAuthScreen({
                   style={{
                     position: "absolute",
                     right: isCreateMode ? -50 : -52,
-                    top: isCreateMode ? -10 : 10,
+                    top: isCreateMode ? -10 : -28,
                     width: isCreateMode ? 202 : 206,
                     height: isCreateMode ? 202 : 206,
                   }}
@@ -820,9 +851,9 @@ export function RecallAuthScreen({
               {infoMessage}
             </Text>
           ) : null}
-        </View>
+      </ScrollView>
 
-        <View style={{ gap: 10, marginTop: isCreateMode ? 2 : 8 }}>
+      <View style={{ gap: 10, marginTop: isCreateMode ? 2 : 8 }}>
           <Pressable
             onPress={
               isResetPasswordMode
@@ -1005,7 +1036,6 @@ export function RecallAuthScreen({
             </Pressable>
           </View>
           ) : null}
-        </View>
       </View>
     </View>
   );

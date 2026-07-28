@@ -279,8 +279,6 @@ export default function ArchiveScreen() {
               paddingBottom: 32,
               paddingHorizontal: 28,
               borderRadius: 26,
-              borderWidth: 1,
-              borderColor: RECALL_COLORS.border,
               backgroundColor: RECALL_COLORS.surface,
               alignItems: "center",
               shadowColor: "#8C7967",

@@ -60,8 +60,6 @@ export default function PrivacyPolicyScreen() {
         <View
           style={{
             borderRadius: 26,
-            borderWidth: 1,
-            borderColor: RECALL_COLORS.border,
             backgroundColor: RECALL_COLORS.surface,
             padding: 22,
             shadowColor: RECALL_COLORS.shadow,

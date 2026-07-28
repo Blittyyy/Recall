@@ -165,7 +165,7 @@ iOS Version:
           Questions, feedback, or ideas? We'd love to hear from you.
         </Text>
 
-        <View style={{ borderRadius: 26, overflow: "hidden", backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER, shadowColor: "#8D7A68", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.06, shadowRadius: 18, elevation: 2 }}>
+        <View style={{ borderRadius: 26, overflow: "hidden", backgroundColor: SURFACE, shadowColor: "#8D7A68", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.06, shadowRadius: 18, elevation: 2 }}>
           {rows.map(({ label, icon: Icon, recallIcon, profileIcon, onPress }, index) => (
             <View key={label}>
               <Pressable

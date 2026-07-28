@@ -12,7 +12,7 @@
       "bundleIdentifier": "com.blitty.recall",
       "appleTeamId": "QK235K3KYL",
       "usesAppleSignIn": true,
-      "supportsTablet": true,
+      "supportsTablet": false,
       "infoPlist": {
         "CFBundleDisplayName": "Recall",
         "ITSAppUsesNonExemptEncryption": false
@@ -26,6 +26,10 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.HIGH_SAMPLING_RATE_SENSORS"
       ],
       "package": "xyz.create.CreateExpoEnvironment"
     },

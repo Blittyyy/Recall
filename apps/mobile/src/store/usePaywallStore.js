@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   areFreemiumLimitsEnforced,
+  arePaywallsEnabled,
   PAYWALL_TRIGGERS,
   PLAN_TIERS,
 } from "../utils/freemium";
@@ -19,7 +20,12 @@ export const usePaywallStore = create((set) => ({
   trigger: null,
   source: null,
   showPaywall: (trigger, source = "app") => {
-    // Defense in depth: never open a blocking limit paywall during beta.
+    // Free v1.0: paywalls are completely unreachable.
+    if (!arePaywallsEnabled()) {
+      return;
+    }
+
+    // Defense in depth: never open a blocking limit paywall when limits are soft.
     if (!areFreemiumLimitsEnforced() && isLimitPaywallTrigger(trigger)) {
       return;
     }
